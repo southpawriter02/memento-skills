@@ -1,0 +1,21 @@
+{
+  "runs": [
+    {
+      "date": "2026-04-13",
+      "scope": "First full pipeline run — treating all history through v0.2.0 as the scanned range (no prior Git tags exist)",
+      "docs_scanned": 6,
+      "docs_fresh": 6,
+      "docs_possibly_stale": 0,
+      "docs_likely_stale": 0,
+      "docs_updated": 0,
+      "docs_created": 2,
+      "created_files": [
+        "CHANGELOG.md",
+        "docs/release-notes-v0.2.0.md"
+      ],
+      "style_errors_fixed": 0,
+      "style_warnings_remaining": 0,
+      "notes": "Repo's tracked docs are all <=13 days old (post-v0.2.0 release on 2026-03-31), so no staleness remediation was needed. Untracked files (skills/ and docs/tech-writing-adaptation-plan.md) were excluded from freshness scan because the scanner reads git log timestamps — they will be picked up on the next run after commit. Only 4 commits exist in git history, none using conventional-commit format, so changelog categorization was done by reading the v0.2.0 release body."
+    }
+  ]
+}
