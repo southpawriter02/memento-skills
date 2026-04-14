@@ -31,16 +31,17 @@ The general principle: **extract structure programmatically, write prose with ju
 
 ## Process
 
-### Step 1 — Understand the scope
+### Step 1 — understand the scope
 
 Determine what to document:
+
 - A single file? A directory? A specific class or module?
 - What kind of output? API reference, getting-started guide, configuration reference, architecture overview?
 - Who's the audience? Developers consuming an API, users configuring a product, contributors onboarding?
 
 If the user is vague ("document this"), default to API reference documentation for the public interface. That's the most commonly needed and hardest to write from scratch.
 
-### Step 2 — Extract structure
+### Step 2 — extract structure
 
 For supported source languages, run the extraction script:
 
@@ -48,16 +49,87 @@ For supported source languages, run the extraction script:
 python <skill-directory>/scripts/extract_signatures.py <source-path> \
   [--language python|csharp|typescript] \
   [--exclude "**/test_*" --exclude "**/node_modules/**"] \
-  [--include-private]
+  [--include-private] \
+  [--target-script latin] \
+  [--translation-summary-only]
 ```
 
-The script outputs JSON with classes, methods, functions, parameters, return types, existing docstrings, and constants. Read this output — it's your structural skeleton.
+The script outputs JSON with classes, methods, functions, parameters, return types, existing docstrings, constants, and — as of MS-DES-0003 — a per-docstring language classification (`docstring_language` and `docstring_scripts`) plus an aggregate `summary.docstring_language_counts`. Read this output; it's your structural skeleton plus a signal for whether a translation pass is needed.
 
 **If the script isn't available or the language isn't supported,** read the source file(s) directly. You can understand code without the script; it just takes more careful reading.
 
 **If the source already has docstrings or doc comments,** use them as your starting point. Don't discard existing documentation — integrate and improve it.
 
-### Step 3 — Choose a template
+**Language flags:**
+
+- `--target-script` sets which Unicode script counts as the target language. Default is `latin` (English). Use `han` for Chinese/Japanese source, `cyrillic` for Russian, etc.
+- `--translation-summary-only` prints a human-readable classification summary and exits without emitting the full JSON. Useful for deciding up front whether a translation pass is needed before generating the actual docs.
+
+### Step 2.5 — translation pass (if needed)
+
+Inspect `summary.docstring_language_counts` in the extractor output:
+
+```json
+"docstring_language_counts": {
+  "target": 11,
+  "non_target": 14,
+  "mixed": 2,
+  "empty": 1,
+  "unknown": 0
+}
+```
+
+**If `non_target + mixed == 0`,** skip this step — every docstring is already in the target language.
+
+**If `non_target + mixed > 0`,** a translation pass is required before the extracted docstrings become reference-doc prose. For each entity whose `docstring_language` is `"non_target"` or `"mixed"`:
+
+1. **Translate the docstring** into the target language as you write the reference doc. Use domain-appropriate terminology — a repo that says `会话` for "session" in Chinese code likely wants "session" (not "conversation" or "dialogue") in the English doc.
+2. **Preserve the original** as an HTML comment immediately above the translated prose, prefixed with the script list reported by the classifier:
+
+   ```markdown
+   <!-- Original (han): 验证 JWT 令牌是否有效。 -->
+   Returns `true` if the JWT token is valid, `false` otherwise.
+   ```
+
+   The HTML comment is invisible to rendered-doc readers but visible to reviewers in the source, which is the point — translations get a fast audit trail.
+
+3. **Flag uncertain translations** with a `<!-- TRANSLATION: verify -->` marker on the line after the translation when the source terminology is ambiguous, truncated, or domain-specific:
+
+   ```markdown
+   <!-- Original (han): 记号 -->
+   Token.
+   <!-- TRANSLATION: verify — could also mean "mark" or "sign"; context needed -->
+   ```
+4. **Handle `mixed` docstrings** the same way. A string like `"Cache TTL (秒)."` becomes:
+
+   ```markdown
+   <!-- Original (han, latin): Cache TTL (秒). -->
+   Cache TTL, in seconds.
+   ```
+
+   You're not expected to translate the Latin fragments — only the non-target ones — but rewriting the whole docstring in fluent target-language prose produces a better doc than a half-translated hybrid.
+
+5. **Entities classified `unknown`** (digits-only, punctuation-only, empty of letters) need a manual look. Usually this means the docstring was literally `"1.0"` or similar; document the entity from its signature instead.
+
+**Translation summary callout.** If the doc has any translated content, prepend this callout to the generated reference doc (right under the H1):
+
+```markdown
+> **Translation summary:** 14 docstrings translated from Chinese (Han script).
+> Originals preserved as HTML comments above each translation. Review
+> recommended before publishing.
+```
+
+Omit the callout entirely when `non_target + mixed == 0`.
+
+**Previewing before a full regen.** If you want to decide whether to do a translation pass without running the full pipeline, invoke the extractor with `--translation-summary-only`:
+
+```bash
+python <skill-directory>/scripts/extract_signatures.py path/to/module.py --translation-summary-only
+```
+
+It prints the per-category counts and exits zero — a cheap pre-flight check.
+
+### Step 3 — choose a template
 
 Pick a documentation template based on what you're generating:
 
@@ -161,7 +233,7 @@ optional_key: optional_value  # Explanation
 [Links to deeper documentation.]
 ```
 
-### Step 4 — Write the documentation
+### Step 4 — write the documentation
 
 With the extracted structure and chosen template, write the docs. Follow these principles:
 
@@ -175,9 +247,10 @@ With the extracted structure and chosen template, write the docs. Follow these p
 
 **Mark gaps explicitly.** If a function has no docstring and its purpose isn't obvious from the name and parameters, write `<!-- TODO: Document this function -->` so the author knows it needs attention.
 
-### Step 5 — Present and offer next steps
+### Step 5 — present and offer next steps
 
 Show the generated documentation to the user and offer:
+
 - "Would you like me to save this as a Markdown file?"
 - "Should I generate docs for additional files or modules?"
 - "Want me to run the style-checker on this to catch formatting issues?"

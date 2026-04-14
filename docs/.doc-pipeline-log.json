@@ -100,6 +100,29 @@
       "style_errors_fixed": 0,
       "style_warnings_remaining": 0,
       "notes": "Design spec MS-DES-0002 landed first (docs-first mentality honored). Script is stdlib-only, Python 3.10+, ~600 lines with inline commentary; test suite is 34 plain-assert tests (no pytest dependency), all passing. Idempotence verified: second-pass run on the 6 authored docs reports 'checked 6 files: clean'. Fence-aware and MDX front-matter-aware — content inside code fences and YAML front matter is passed through verbatim. Rule 7.1 is report-only (link-text rewriting needs context the script doesn't have). 156 findings on legacy pre-style-guide docs (AUTO_UPDATE_README.md, CHANGELOG_bounded_context_merge.md, UPDATE_SUMMARY.md, agent_execution_flow.md, llm_tool_call_compatibility.md, and CJK-content files) were intentionally left unfixed — those predate the style guide and belong to a separate baseline-cleanup task, not this feature. Phase 2 candidates 1–4 complete; remaining open items from the retrospective: #5 (doc-generator translation/localization pass) and #6 (BM25 retrieval layer for skill search)."
+    },
+    {
+      "date": "2026-04-14",
+      "scope": "Phase 2 item #5 — doc-generator translation pass. Adds per-docstring Unicode-script classification (target / non_target / mixed / empty / unknown) and sibling annotation fields to the signature-extractor JSON output. Also adds `--target-script` and `--translation-summary-only` CLI flags, module-level docstring extraction for Python, and a Step 2.5 translation workflow in SKILL.md. The agent performs the actual translation inside generated docs, preserving originals as `<!-- Original (han, latin): ... -->` HTML comments.",
+      "docs_scanned": 0,
+      "docs_fresh": 0,
+      "docs_possibly_stale": 0,
+      "docs_likely_stale": 0,
+      "docs_updated": 1,
+      "docs_created": 3,
+      "created_files": [
+        "docs/design/doc-generator-translation-pass.md",
+        "skills/doc-generator/scripts/test_language_classifier.py"
+      ],
+      "files_modified": [
+        "skills/doc-generator/scripts/extract_signatures.py",
+        "skills/doc-generator/SKILL.md",
+        "docs/api/skill-gateway.md",
+        "CHANGELOG.md"
+      ],
+      "style_errors_fixed": 14,
+      "style_warnings_remaining": 0,
+      "notes": "Design spec MS-DES-0003 landed first (docs-first mentality honored). Stdlib-only (`unicodedata`), no third-party deps — rejected `langdetect`/`cld3` in the Alternatives section. 28 unit tests all passing, covering edge cases (empty / whitespace / digits / punctuation), single-script inputs (Latin / Han / Cyrillic / Greek / Arabic), mixed-script inputs with threshold sensitivity, the annotation walker, and six CLI subprocess tests. Idempotence verified: re-running the annotation walker produces identical output. Exercised against `core/skill/gateway.py` (the file that motivated the feature): 4 mixed-docstring entities detected, translated in `docs/api/skill-gateway.md` with `<!-- Original (han, latin): ... -->` audit-trail comments and a Translation-summary callout. style-checker autofix applied 14 mechanical fixes to the new SKILL.md and design spec (sentence-case, fence tags, blank-line-before-list); all three touched docs now pass `style-checker --check` clean. One acceptance criterion in the design spec (AC #4) was corrected post-implementation: `\"验证 JWT 令牌是否有效。\"` classifies as `mixed` (ratio 0.27 > 0.20 non-target cutoff), not `non_target` as originally drafted — the implementation is semantically correct; the spec had a math error. Phase 2 candidates 1–5 now complete; only #6 (BM25 retrieval layer) remains open."
     }
   ]
 }

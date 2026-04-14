@@ -83,9 +83,153 @@ import ast
 import json
 import re
 import sys
+import unicodedata
 from datetime import datetime, timezone
 from fnmatch import fnmatch
 from pathlib import Path
+
+
+# ---------------------------------------------------------------------------
+# Docstring language classification (MS-DES-0003)
+# ---------------------------------------------------------------------------
+#
+# The classifier lets the doc-generator skill detect docstrings written in a
+# language other than the target language (English by default) so the agent
+# can translate them before they land in reference-doc prose. It operates on
+# pure character-script counting via `unicodedata` — no third-party deps, no
+# network, deterministic across runs. See `docs/design/doc-generator-
+# translation-pass.md` for the full rationale and acceptance criteria.
+
+# Unicode `unicodedata.name()` prefixes we map to short script labels. Keys
+# are matched against the first whitespace-separated word of a character's
+# Unicode name (uppercased). The list is not exhaustive — scripts we do not
+# map fall through to "other" and still participate in the non-target tally,
+# so the classifier stays conservative without special-casing every script.
+SCRIPT_NAME_PREFIXES: dict[str, str] = {
+    "LATIN": "latin",
+    "CYRILLIC": "cyrillic",
+    "GREEK": "greek",
+    "ARABIC": "arabic",
+    "HEBREW": "hebrew",
+    "DEVANAGARI": "devanagari",
+    "BENGALI": "bengali",
+    "TAMIL": "tamil",
+    "THAI": "thai",
+    "LAO": "lao",
+    "TIBETAN": "tibetan",
+    "MYANMAR": "myanmar",
+    "GEORGIAN": "georgian",
+    "ARMENIAN": "armenian",
+    "ETHIOPIC": "ethiopic",
+    "HIRAGANA": "hiragana",
+    "KATAKANA": "katakana",
+    "HANGUL": "hangul",
+    # CJK unified ideographs (and their extensions / compatibility blocks)
+    # all begin with "CJK" in their Unicode name. We collapse them under
+    # "han" because Japanese Kanji, Chinese Hanzi, and Korean Hanja share
+    # the same codepoints and cannot be disambiguated without context.
+    "CJK": "han",
+}
+
+# The set of script labels the `--target-script` flag accepts. Built from the
+# values above so the flag validation stays in sync with the mapping.
+SUPPORTED_TARGET_SCRIPTS: frozenset[str] = frozenset(SCRIPT_NAME_PREFIXES.values())
+
+# Classification thresholds. Tuned conservatively: a docstring that is 95%+
+# target-script letters is `target`; 20% or less is `non_target`; everything
+# between is `mixed`. These stay code constants (not CLI flags) so changes
+# live in git history rather than in per-run invocations.
+TARGET_RATIO_MIN = 0.95
+NON_TARGET_RATIO_MAX = 0.20
+
+
+def _script_for_char(char: str) -> str:
+    """Return a short script label for a single character.
+
+    Uses `unicodedata.name()` and maps the leading word to one of the
+    script labels in `SCRIPT_NAME_PREFIXES`. Unknown / unnamed codepoints
+    return "other" rather than raising, so a stray private-use character
+    does not abort the whole classification pass.
+
+    Args:
+        char: A single-character string. Behavior is undefined for longer
+              inputs; the function is always called with one char at a time.
+
+    Returns:
+        One of the values in `SCRIPT_NAME_PREFIXES`, or "other".
+    """
+    name = unicodedata.name(char, "")
+    if not name:
+        return "other"
+    first_word = name.split(" ", 1)[0]
+    return SCRIPT_NAME_PREFIXES.get(first_word, "other")
+
+
+def classify_docstring_language(
+    docstring: str | None,
+    *,
+    target_script: str = "latin",
+    target_threshold: float = TARGET_RATIO_MIN,
+    non_target_threshold: float = NON_TARGET_RATIO_MAX,
+) -> tuple[str, list[str]]:
+    """Classify a docstring as target / non_target / mixed / empty / unknown.
+
+    The classifier counts letters (Unicode category starts with "L") by
+    script, computes the fraction of letters in the target script, and
+    assigns a label per the thresholds.
+
+    Args:
+        docstring: Raw docstring text as captured by the extractor. May be
+                   None or empty; both are treated as `empty`.
+        target_script: Script label for the target language. "latin" for
+                       English, "han" for Chinese/Japanese source repos, etc.
+        target_threshold: Minimum target-script letter ratio to classify as
+                          `target`. Defaults to `TARGET_RATIO_MIN` (0.95).
+        non_target_threshold: Maximum target-script letter ratio to classify
+                              as `non_target`. Defaults to
+                              `NON_TARGET_RATIO_MAX` (0.20).
+
+    Returns:
+        A pair `(classification, scripts)`. `classification` is one of
+        "target", "non_target", "mixed", "empty", "unknown". `scripts` is a
+        sorted, deduplicated list of the script labels observed among the
+        letter characters (empty if no letters were found).
+    """
+    # Empty / whitespace-only → "empty", no scripts to report.
+    if not docstring or not docstring.strip():
+        return "empty", []
+
+    # Tally letter characters by script. `unicodedata.category(char)` returns
+    # a two-letter code; all letters start with "L" (Lu, Ll, Lt, Lo, Lm).
+    # Non-letters (digits, punctuation, symbols, whitespace) are skipped so
+    # a docstring like "Returns True." isn't diluted by the punctuation.
+    script_counts: dict[str, int] = {}
+    total_letters = 0
+    for char in docstring:
+        if not unicodedata.category(char).startswith("L"):
+            continue
+        total_letters += 1
+        script = _script_for_char(char)
+        script_counts[script] = script_counts.get(script, 0) + 1
+
+    # No letters at all (digits / punctuation / whitespace only) → "unknown".
+    # This is rare but can happen for docstrings like "1.0" or "* * *".
+    if total_letters == 0:
+        return "unknown", []
+
+    # Compute the target-script ratio and classify. We also guard against a
+    # target-script label that the mapping doesn't know about; in that case
+    # the ratio is zero and the docstring falls into `non_target` (which is
+    # semantically correct: nothing in it matches the target).
+    target_count = script_counts.get(target_script, 0)
+    target_ratio = target_count / total_letters
+    scripts = sorted(script_counts.keys())
+
+    if target_ratio >= target_threshold:
+        return "target", scripts
+    if target_ratio <= non_target_threshold:
+        return "non_target", scripts
+    return "mixed", scripts
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +423,10 @@ def extract_python(source: str, file_path: str, include_private: bool = False) -
 
     return {
         "path": file_path,
+        # Module-level docstring. Included so the translation pass can flag
+        # files whose module-level prose is in a non-target language (the
+        # `gateway.py` case that motivated MS-DES-0003).
+        "module_docstring": _get_docstring(tree),
         "classes": classes,
         "functions": functions,
         "constants": constants,
@@ -406,6 +554,9 @@ def extract_csharp(source: str, file_path: str, include_private: bool = False) -
 
     return {
         "path": file_path,
+        # C# has no single "module docstring" — file-level XML-doc comments
+        # are uncommon. We emit the field for schema symmetry with Python.
+        "module_docstring": None,
         "classes": classes,
         "functions": functions,
         "constants": [],
@@ -514,10 +665,131 @@ def extract_typescript(source: str, file_path: str, include_private: bool = Fals
 
     return {
         "path": file_path,
+        # TypeScript: no canonical "module docstring" convention. Leading
+        # JSDoc usually attaches to the first declaration. Emit None for
+        # schema symmetry; see Python extractor for the motivating case.
+        "module_docstring": None,
         "classes": classes,
         "functions": functions,
         "constants": [],
     }
+
+
+# ---------------------------------------------------------------------------
+# Docstring-language annotation walker (MS-DES-0003)
+# ---------------------------------------------------------------------------
+
+def _annotate_entity(
+    entity: dict,
+    target_script: str,
+    target_threshold: float,
+    non_target_threshold: float,
+    counts: dict[str, int],
+) -> None:
+    """Attach `docstring_language` and `docstring_scripts` to an entity dict.
+
+    Mutates `entity` in place and increments the aggregate `counts` map.
+    Safe to call on entities that have no `docstring` key — the function
+    skips them silently so it can be dispatched uniformly across class,
+    method, and function dicts.
+
+    Args:
+        entity: A dict representing a class, method, function, etc. If it
+                does not have a "docstring" key (present and non-null or
+                null), no annotation is attached.
+        target_script: Script label considered "target" (e.g. "latin").
+        target_threshold: Target-ratio cutoff for "target" classification.
+        non_target_threshold: Target-ratio cutoff for "non_target".
+        counts: Running tally keyed by classification label.
+    """
+    if "docstring" not in entity:
+        return
+    classification, scripts = classify_docstring_language(
+        entity["docstring"],
+        target_script=target_script,
+        target_threshold=target_threshold,
+        non_target_threshold=non_target_threshold,
+    )
+    entity["docstring_language"] = classification
+    entity["docstring_scripts"] = scripts
+    counts[classification] = counts.get(classification, 0) + 1
+
+
+def _annotate_module_docstring(
+    file_dict: dict,
+    target_script: str,
+    target_threshold: float,
+    non_target_threshold: float,
+    counts: dict[str, int],
+) -> None:
+    """Classify and annotate the module-level docstring for a file entry.
+
+    Produces siblings `module_docstring_language` and
+    `module_docstring_scripts` that the agent can inspect when deciding
+    whether the file's top-level prose needs translation.
+    """
+    if "module_docstring" not in file_dict:
+        return
+    classification, scripts = classify_docstring_language(
+        file_dict["module_docstring"],
+        target_script=target_script,
+        target_threshold=target_threshold,
+        non_target_threshold=non_target_threshold,
+    )
+    file_dict["module_docstring_language"] = classification
+    file_dict["module_docstring_scripts"] = scripts
+    counts[classification] = counts.get(classification, 0) + 1
+
+
+def annotate_docstring_languages(
+    file_dict: dict,
+    *,
+    target_script: str = "latin",
+    target_threshold: float = TARGET_RATIO_MIN,
+    non_target_threshold: float = NON_TARGET_RATIO_MAX,
+) -> dict[str, int]:
+    """Walk a file extraction dict and annotate every docstring with language info.
+
+    Mutates `file_dict` in place: every class / method / function / module
+    docstring gets paired `*_language` and `*_scripts` fields. Returns an
+    aggregate count of classifications for this single file so the caller
+    can roll them up across the whole run.
+
+    Args:
+        file_dict: Output of one of the per-language extractors.
+        target_script: Script label for the target language.
+        target_threshold: See `classify_docstring_language`.
+        non_target_threshold: See `classify_docstring_language`.
+
+    Returns:
+        Dict keyed by classification label ("target", "non_target", "mixed",
+        "empty", "unknown") with integer counts. Labels not seen in this
+        file are omitted.
+    """
+    counts: dict[str, int] = {}
+
+    # Module-level docstring first (one per file, may be None).
+    _annotate_module_docstring(
+        file_dict, target_script, target_threshold, non_target_threshold, counts
+    )
+
+    # Classes and their methods.
+    for cls in file_dict.get("classes", []):
+        _annotate_entity(
+            cls, target_script, target_threshold, non_target_threshold, counts
+        )
+        for method in cls.get("methods", []):
+            _annotate_entity(
+                method, target_script, target_threshold, non_target_threshold, counts
+            )
+
+    # Top-level functions.
+    for func in file_dict.get("functions", []):
+        _annotate_entity(
+            func, target_script, target_threshold, non_target_threshold, counts
+        )
+
+    return counts
 
 
 # ---------------------------------------------------------------------------
@@ -535,13 +807,21 @@ def extract_file(
     file_path: str,
     language: str | None = None,
     include_private: bool = False,
+    *,
+    target_script: str = "latin",
 ) -> dict | None:
     """Extract signatures from a single source file.
+
+    After extraction, every docstring-bearing entity (module, class, method,
+    function) gets `docstring_language` and `docstring_scripts` sibling
+    fields via `annotate_docstring_languages`. See MS-DES-0003.
 
     Args:
         file_path: Path to the source file.
         language: Force language (or auto-detect from extension).
         include_private: Include private members.
+        target_script: Script label considered "target" for docstring
+                       classification. Defaults to "latin" (English).
 
     Returns:
         Extraction dict, or None if the file can't be parsed.
@@ -552,10 +832,19 @@ def extract_file(
 
     source = Path(file_path).read_text(encoding="utf-8", errors="replace")
     try:
-        return EXTRACTORS[lang](source, file_path, include_private)
+        result = EXTRACTORS[lang](source, file_path, include_private)
     except SyntaxError as e:
         print(f"WARNING: Syntax error in {file_path}: {e}", file=sys.stderr)
         return None
+
+    # Annotate docstrings in-place. The per-file counts are aggregated by
+    # the caller (`extract_directory` / `main`) into a global summary.
+    file_counts = annotate_docstring_languages(result, target_script=target_script)
+    # Stash the per-file counts on the dict so the caller can roll them up
+    # without re-walking. Keep it under a clearly-namespaced key to avoid
+    # confusion with other future per-file totals.
+    result["_language_counts"] = file_counts
+    return result
 
 
 def extract_directory(
@@ -563,6 +852,8 @@ def extract_directory(
     language: str | None = None,
     exclude_patterns: list[str] | None = None,
     include_private: bool = False,
+    *,
+    target_script: str = "latin",
 ) -> list[dict]:
     """Recursively extract signatures from all supported files in a directory.
 
@@ -571,6 +862,8 @@ def extract_directory(
         language: Force language for all files (or auto-detect).
         exclude_patterns: Glob patterns to skip (matched against relative paths).
         include_private: Include private members.
+        target_script: Script label forwarded to `extract_file` for
+                       docstring-language classification.
 
     Returns:
         List of extraction dicts, one per file.
@@ -588,7 +881,9 @@ def extract_directory(
         if any(fnmatch(rel, pat) for pat in exclude):
             continue
 
-        result = extract_file(str(file_path), language, include_private)
+        result = extract_file(
+            str(file_path), language, include_private, target_script=target_script
+        )
         if result:
             result["path"] = rel  # Use relative path in output
             results.append(result)
@@ -599,6 +894,61 @@ def extract_directory(
 # ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
+
+def _aggregate_language_counts(files: list[dict]) -> dict[str, int]:
+    """Sum the per-file `_language_counts` dicts into a single tally.
+
+    The keys that can appear are fixed ("target", "non_target", "mixed",
+    "empty", "unknown"). Keys missing from any file default to zero so the
+    returned dict always has the full set — the agent reading the summary
+    shouldn't have to defensive-check.
+    """
+    totals = {"target": 0, "non_target": 0, "mixed": 0, "empty": 0, "unknown": 0}
+    for f in files:
+        for key, value in f.get("_language_counts", {}).items():
+            totals[key] = totals.get(key, 0) + value
+    return totals
+
+
+def _strip_internal_keys(files: list[dict]) -> None:
+    """Remove helper-only keys (prefix `_`) before JSON serialization.
+
+    Per-file `_language_counts` is an intermediate — the aggregate form in
+    the top-level summary is what external consumers should read.
+    """
+    for f in files:
+        for key in list(f.keys()):
+            if key.startswith("_"):
+                del f[key]
+
+
+def _print_translation_summary(
+    totals: dict[str, int], file_count: int, target_script: str
+) -> None:
+    """Print the human-readable translation summary used by --translation-summary-only."""
+    non_target = totals.get("non_target", 0)
+    mixed = totals.get("mixed", 0)
+    translatable = non_target + mixed
+    total_docstrings = sum(totals.values())
+
+    if total_docstrings == 0:
+        print("No docstrings found.")
+        return
+
+    print(f"Scanned {file_count} file(s); target script: {target_script}.")
+    print(f"  {totals.get('target', 0):>4}  target  (no translation needed)")
+    print(f"  {non_target:>4}  non_target  (translate)")
+    print(f"  {mixed:>4}  mixed  (translate; contains non-target fragments)")
+    print(f"  {totals.get('empty', 0):>4}  empty  (skip)")
+    print(f"  {totals.get('unknown', 0):>4}  unknown  (inspect manually)")
+    print()
+    if translatable == 0:
+        print("No translation pass needed — all docstrings are in the target script.")
+    else:
+        print(
+            f"Translation pass recommended: {translatable} docstring(s) need review."
+        )
+
 
 def main():
     """Parse command-line arguments and run the signature extractor."""
@@ -631,29 +981,81 @@ def main():
         action="store_true",
         help="Include private/internal members",
     )
+    # MS-DES-0003: docstring-language classification flags.
+    parser.add_argument(
+        "--target-script",
+        default="latin",
+        help=(
+            "Unicode script label considered 'target' for docstring classification "
+            "(default: latin). Supported: "
+            + ", ".join(sorted(SUPPORTED_TARGET_SCRIPTS))
+        ),
+    )
+    parser.add_argument(
+        "--translation-summary-only",
+        action="store_true",
+        help=(
+            "Print a human-readable docstring-language summary and exit "
+            "without emitting the full JSON. Useful for deciding whether a "
+            "translation pass is needed before regenerating docs."
+        ),
+    )
 
     args = parser.parse_args()
     source_path = Path(args.source)
+
+    # Validate target-script up front so bad flags fail with a clear error
+    # before we do any file I/O.
+    if args.target_script not in SUPPORTED_TARGET_SCRIPTS:
+        print(
+            f'ERROR: unrecognized Unicode script "{args.target_script}". '
+            f"Supported: {', '.join(sorted(SUPPORTED_TARGET_SCRIPTS))}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     if not source_path.exists():
         print(f"ERROR: {args.source} does not exist", file=sys.stderr)
         sys.exit(1)
 
     if source_path.is_file():
-        files = [extract_file(str(source_path), args.language, args.include_private)]
+        files = [
+            extract_file(
+                str(source_path),
+                args.language,
+                args.include_private,
+                target_script=args.target_script,
+            )
+        ]
         files = [f for f in files if f is not None]
     else:
         files = extract_directory(
-            str(source_path), args.language, args.exclude, args.include_private
+            str(source_path),
+            args.language,
+            args.exclude,
+            args.include_private,
+            target_script=args.target_script,
         )
 
-    # Count totals
+    # Aggregate docstring-language counts BEFORE stripping internal keys.
+    language_counts = _aggregate_language_counts(files)
+
+    # Summary-only fast path: print the tally, exit zero, skip the JSON.
+    if args.translation_summary_only:
+        _print_translation_summary(language_counts, len(files), args.target_script)
+        sys.exit(0)
+
+    # Count totals (existing behavior, unchanged).
     total_classes = sum(len(f["classes"]) for f in files)
     total_functions = sum(len(f["functions"]) for f in files)
     total_methods = sum(
         sum(len(c["methods"]) for c in f["classes"])
         for f in files
     )
+
+    # Strip the per-file `_language_counts` helpers now that the aggregate
+    # is computed. External consumers only need the summary-level view.
+    _strip_internal_keys(files)
 
     result = {
         "source": str(args.source),
@@ -665,6 +1067,9 @@ def main():
             "total_classes": total_classes,
             "total_functions": total_functions,
             "total_methods": total_methods,
+            # MS-DES-0003: aggregate docstring-language classifications.
+            "docstring_language_counts": language_counts,
+            "target_script": args.target_script,
         },
     }
 
