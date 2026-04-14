@@ -446,8 +446,12 @@ class AutoUpdateManager:
                 )
                 return current_version
             except Exception as e:
+                # Fallback matches the shipped package version. Keep
+                # this in lockstep with `version.py` / `pyproject.toml`
+                # so update-check comparisons don't wrongly report the
+                # installed build as behind.
                 logger.error(f"[AutoUpdate] Failed to get version: {e}")
-                return "0.2.0"
+                return "0.3.0"
 
     def _mark_checked(self) -> None:
         """Record that a check cycle has completed (regardless of path taken)."""

@@ -1,6 +1,6 @@
 [project]
 name = "memento-s"
-version = "0.2.0"
+version = "0.3.0"
 description = "Memento-S Agent"
 requires-python = ">=3.12"
 dependencies = [
@@ -59,7 +59,7 @@ app.name            = "memento-s"
 app.product         = "Memento-S"
 app.org             = "com.yangtzeailab.memento-s"
 app.bundle_id       = "com.yangtzeailab.memento-s.app"
-app.build_version   = "0.2.0"
+app.build_version   = "0.3.0"
 app.build_number    = 1
 
 [tool.flet.app.macos]
@@ -71,7 +71,7 @@ entitlements  = { "com.apple.security.network.client" = true, "com.apple.securit
 [tool.briefcase]
 project_name = "Memento-S"
 bundle = "com.memento-s"
-version = "0.2.0"
+version = "0.3.0"
 
 [tool.briefcase.app.memento-s]
 formal_name = "Memento-S"

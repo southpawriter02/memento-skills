@@ -103,7 +103,11 @@ class SkillCreate(BaseModel):
     name: str
     display_name: str | None = None
     description: str | None = None
-    version: str = "0.2.0"
+    # Default skill version tracks the project release number.
+    # Skills that do not declare their own version inherit whatever
+    # release shipped with them, which makes `memento-s` releases a
+    # natural upgrade checkpoint. Bump with every minor/major release.
+    version: str = "0.3.0"
     author: str | None = None
     source_type: str
     source_url: str | None = None

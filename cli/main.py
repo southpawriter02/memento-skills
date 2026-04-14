@@ -43,8 +43,12 @@ except ImportError:
 
         __version__ = _pkg_version("memento-s")
     except Exception as e:
-        print(f"[Warning] Failed to get version, defaulting to 0.2.0: {e}")
-        __version__ = "0.2.0"
+        # Fallback keeps the CLI functional in unusual install states
+        # (e.g. dev clones without package metadata). Bump this string
+        # alongside `version.py`, `pyproject.toml`, and the other
+        # hard-coded version fallbacks on every release.
+        print(f"[Warning] Failed to get version, defaulting to 0.3.0: {e}")
+        __version__ = "0.3.0"
 
 app = typer.Typer(name="MementoS", help="Memento-S Agent CLI", no_args_is_help=True)
 console = Console()

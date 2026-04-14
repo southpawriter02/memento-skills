@@ -243,7 +243,11 @@ class Skill(Base):
     )
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    version: Mapped[str] = mapped_column(String(32), default="0.2.0", nullable=False)
+    # Column-level default for skill rows — mirrors the Pydantic
+    # `SkillCreate.version` default so rows inserted via raw SQL or
+    # Alembic migrations without going through the create-schema still
+    # get the current release number stamped on them.
+    version: Mapped[str] = mapped_column(String(32), default="0.3.0", nullable=False)
     author: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
     # 状态

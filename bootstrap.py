@@ -348,7 +348,11 @@ def _ensure_config_version(manager: ConfigManager) -> None:
     try:
         # 从 system_config 获取版本号
         system_config = manager.load_system_config()
-        system_version = system_config.get("version", "0.2.0")
+        # Fallback matches the current package version — see
+        # `version.py`, `pyproject.toml`, and the release notes under
+        # `docs/release-notes-v0.3.0.md`. If `system_config.json` is
+        # missing or malformed, assume we're on the shipped release.
+        system_version = system_config.get("version", "0.3.0")
 
         # 获取当前用户配置
         user_config = manager.get_raw_user_config()

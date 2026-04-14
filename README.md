@@ -3,7 +3,7 @@
 <h3 align="center"><b>Deploy an agent. Let it learn, rewrite, and evolve its own skills.</b></h3>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-0.2.0-blue?style=for-the-badge" alt="Version 0.2.0">
+  <img src="https://img.shields.io/badge/Version-0.3.0-blue?style=for-the-badge" alt="Version 0.3.0">
   <img src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white" alt="Python 3.12+">
   <img src="https://img.shields.io/badge/Skills-10%20built--in-0f766e" alt="10 built-in skills">
   <img src="https://img.shields.io/badge/Framework-Fully%20Self--Developed-b91c1c" alt="Fully self-developed framework">
@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <a href="#-whats-new-in-v020">What's New</a> ·
+  <a href="#-whats-new-in-v030">What's New</a> ·
   <a href="#-learning-results">Learning Results</a> ·
   <a href="#-one-click-gui-install">Install</a> ·
   <a href="#-quick-start-developer">Quick Start</a> ·
@@ -56,7 +56,36 @@
 
 ---
 
-## What's New in v0.2.0
+## What's new in v0.3.0
+
+> **v0.3.0** is an internal-tooling release focused on documentation quality and retrieval precision. The architectural baseline from v0.2.0 is unchanged; this release sharpens the surfaces around it. See the full [v0.3.0 release notes](docs/release-notes-v0.3.0.md) for migration details.
+
+### Retrieval layer
+
+| Change | Description |
+| --- | --- |
+| **BM25 lexical retrieval** | New `LocalBm25Recall` strategy (`core/skill/retrieval/local_bm25_recall.py`) runs a pure-Python BM25 search over skill names, descriptions, and full SKILL.md bodies. Catches exact-name, tool-identifier, and body-only keyword queries that the vector pipeline can miss. Stdlib-only implementation — no `rank_bm25`, `whoosh`, or FTS5 dependencies. |
+| **Hybrid score fusion via RRF** | `MultiRecall` now fuses BM25 and vector rankings through reciprocal rank fusion (`k=60`), with the `local-before-remote` tier rule preserved. Hybrid hits surface under `match_type="hybrid"` for diagnostics. |
+| **Extended `RecallCandidate` schema** | Four new optional fields (`bm25_score`, `vector_score`, `bm25_rank`, `vector_rank`) carry per-strategy signals into the fusion stage. Default to `None`; existing callers that read only `name` and `score` are unaffected. |
+
+### Technical-writing skill suite
+
+| Change | Description |
+| --- | --- |
+| **`style-checker`** | Knowledge skill for Markdown review against a 30-rule style guide, with a new `style_autofix.py` CLI implementing the six mechanical rules (sentence-case headings, fence language tags, trailing-colon stripping, etc.). Suitable for pre-commit or CI gating via `--check`. |
+| **`changelog-writer`** | Parses conventional-commit git history into Keep a Changelog sections. |
+| **`doc-freshness`** | Scans a `docs/` tree against git history and classifies each file as fresh / possibly_stale / likely_stale. Supports `--include-untracked` for drafting workflows. Path-overlap relevance filter replaces the fuzzy substring heuristic used in the prototype. |
+| **`doc-generator`** | Extracts signatures from Python (AST-based), C#, and TypeScript (regex-based) source. New **Step 2.5 translation pass** classifies docstrings by Unicode script and annotates mixed/non-target docstrings so the agent can translate them while preserving originals as `<!-- Original (han): ... -->` HTML comments. |
+| **`release-notes`** | Audience-calibrated release-notes generation (developer / end-user / ops / executive). |
+| **`doc-pipeline`** | Orchestrator that runs the other five in sequence and logs results to `docs/.doc-pipeline-log.json` for a utility-scoring feedback loop. |
+
+### Docs-first delivery convention
+
+Four design specs landed during this release (MS-DES-0001 through MS-DES-0004) capturing the rationale and open-question trade-offs for each non-trivial change. The `docs/design/` directory is now the canonical home for pre-implementation design work.
+
+---
+
+## What's new in v0.2.0
 
 > **v0.2.0** is a major architectural upgrade. The core agent, skill system, configuration layer, and deployment surfaces have all been redesigned or significantly extended compared to v0.1.0.
 
@@ -297,7 +326,7 @@ memento-gui       # Launch the desktop GUI with chat interface
 <details>
 <summary><b>Configuration system (v2)</b></summary>
 
-Memento-Skills v0.2.0 uses a three-layer configuration architecture:
+Memento-Skills uses a three-layer configuration architecture (introduced in v0.2.0 and unchanged in v0.3.0):
 
 - **System Config** (`system_config.json`) — read-only defaults shipped with the codebase.
 - **User Config** (`~/memento_s/config.json`) — persistent user customisation, read-write.
@@ -502,6 +531,8 @@ Memento-Skills 的核心不是"怎么让 assistant 跑起来"，而是"怎么让
 和 OpenClaw 相比，两者都具备 skills、工具调用、本地执行、持久化记忆和系统化部署能力，但关注点不同。OpenClaw 更偏向让 assistant 稳定接入真实世界；Memento-Skills 更偏向让 agent 从真实部署经验中持续学习和自我演化。
 
 **v0.2.0 主要更新：** 核心架构采用 Bounded Context 重构，配置系统升级为三层隔离架构（System/User/Runtime），新增 Skill Market 支持云端技能市场，新增多平台 IM Gateway（飞书、钉钉、企业微信、微信），执行引擎拆分为细粒度子模块并增加 Tool Bridge、执行策略、错误恢复和循环检测机制，GUI 新增 Workspace 浏览器和会话管理，新增完整测试套件和构建脚本。
+
+**v0.3.0 主要更新：** 内部工具化和检索精度升级版本，架构基线与 v0.2.0 保持一致。新增 BM25 词法召回策略（`LocalBm25Recall`，纯 Python 实现，无第三方依赖），并通过 reciprocal rank fusion（RRF，`k=60`）将 BM25 与向量检索的排序融合，同时保留"本地优先于远程"的分层规则；`RecallCandidate` 扩展出四个可选字段（`bm25_score` / `vector_score` / `bm25_rank` / `vector_rank`）用于诊断。同时落地六个技术写作 skill（`style-checker`、`changelog-writer`、`doc-freshness`、`doc-generator`、`release-notes`、`doc-pipeline`）和四份设计文档（MS-DES-0001 至 MS-DES-0004），建立"先设计、后实现"的交付约定。
 
 当前仓库已经具备比较完整的本地落地能力，包括 CLI、桌面 GUI、多平台 IM 桥接、本地 sandbox 和 skill 验证流程，因此它不仅适合 benchmark 式 agent，也适合继续往个人助理、长期运行和真实世界任务代理方向推进。
 

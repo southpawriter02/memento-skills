@@ -162,6 +162,34 @@
       "style_errors_fixed": 0,
       "style_warnings_remaining": 0,
       "notes": "Procured a Python 3.12.13 interpreter via `uv python install 3.12` (sandbox is rootless; deadsnakes PPA blocked by `no new privileges` flag; uv's python-build-standalone payload is the only way in). Created venv at /sessions/intelligent-friendly-darwin/.venv-ms and installed the runtime slice of the dep graph needed to import middleware.config plus the retrieval layer (pydantic, pydantic-settings, python-dotenv, platformdirs, loguru, inflection, jsonschema, pyyaml, python-frontmatter, litellm, tiktoken, httpx, anthropic, openai, aiofiles, aiohttp, beautifulsoup4, markdownify, watchdog, anyio, requests, websockets, typer, rich, sqlalchemy, aiosqlite, alembic, mcp, sqlite-vec, pytest, pytest-asyncio). Workaround noted for next time: pytest's default TMPDIR choice triggered a shutil.rmtree RecursionError during teardown under the sandbox's tmpfs layout — setting TMPDIR=/sessions/intelligent-friendly-darwin/pytmp cleared it. Results: 37/37 test_local_bm25_recall.py tests green in 0.05s (tokenizer, Bm25Index, LocalBm25Recall, tuning constants); 25/26 test_multi_recall.py tests green (1 skipped: test_search_local_priority, which requires both local AND remote strategies to be available in the environment — cloud not configured here, expected skip); including all 13 new fusion unit tests under TestRrfFusion/TestStampRank/TestMergeIntoExisting/TestTierRuleAfterFusion passing on the first run; all 8 test_remote_recall.py tests passed against the live Market endpoint (25.3s — slowest bucket, network-bound); and the non-remote batch ran 68 passed / 9 skipped / 8 deselected in 29.5s. Aggregate: 76 passed, 9 skipped (sqlite-vec/optional LocalDbRecall paths + the cross-tier priority test), 0 failures. MS-DES-0004 Acceptance Criteria #11 (unit tests pass) and #17 (style-checker autofix passes on new Markdown) are both objectively verified. Phase 2 v0.3.0 release is green for cut."
+    },
+    {
+      "date": "2026-04-14",
+      "scope": "v0.3.0 release",
+      "docs_scanned": 0,
+      "docs_fresh": 0,
+      "docs_possibly_stale": 0,
+      "docs_likely_stale": 0,
+      "docs_updated": 0,
+      "docs_created": 1,
+      "created_files": [
+        "docs/release-notes-v0.3.0.md"
+      ],
+      "files_modified": [
+        "version.py",
+        "pyproject.toml",
+        "middleware/config/system_config.json",
+        "cli/main.py",
+        "bootstrap.py",
+        "middleware/storage/schemas.py",
+        "middleware/storage/models.py",
+        "gui/modules/auto_update_manager.py",
+        "README.md",
+        "CHANGELOG.md"
+      ],
+      "style_errors_fixed": 0,
+      "style_warnings_remaining": 22,
+      "notes": "Cut the v0.3.0 release. Version audit first: `grep -rn '0\\.2\\.0'` identified 10 canonical version references across 9 files; all bumped to 0.3.0 in a single pass with inline comments added to every hard-coded fallback (cli/main.py, bootstrap.py, middleware/storage/schemas.py Pydantic default, middleware/storage/models.py SQLAlchemy column default, gui/modules/auto_update_manager.py) documenting the lockstep-with-pyproject.toml requirement — formalizes the release checklist into the code itself so future release-cuts don't drift. CHANGELOG.md: stamped `## [Unreleased]` → `## [0.3.0] - 2026-04-14`, inserted a fresh empty `## [Unreleased]` section above it, added a short v0.3.0 preamble framing this as an internal-tooling release (architecture baseline from v0.2.0 preserved), and added `[0.3.0]: #030---2026-04-14` to the anchor-link list at the bottom. README.md: bumped the version badge (0.2.0 → 0.3.0, alt text included), added a `## What's new in v0.3.0` section above the existing v0.2.0 section with three feature tables (Retrieval layer / Technical-writing skill suite / Docs-first delivery convention) and a pointer to the release notes, added a Chinese `**v0.3.0 主要更新：**` paragraph next to the existing v0.2.0 summary, and tweaked the config-architecture line to frame v0.2.0's three-layer config as a baseline unchanged in v0.3.0. docs/release-notes-v0.3.0.md: drafted per the release-notes skill's developer-audience calibration, following the v0.2.0 template (overview / highlights / breaking changes / what's also in this release / upgrade checklist / thanks). Style-checker final pass: `style_autofix.py --check` run on the three new/modified Markdown files (docs/release-notes-v0.3.0.md, CHANGELOG.md, README.md) reports 22 findings total — zero in the new content; all 22 are pre-existing Rule 3.1 sentence-case findings in the README's v0.2.0-era sections (lines 92–524: 'Core Architecture', 'Memento-Skills vs OpenClaw', 'One Repo. One Learning Agent.', 'Quick Start (Developer)', etc.). Auto-fix was not applied because it would corrupt proper nouns not yet in the PROPER_NOUNS allowlist (OpenClaw → openclaw, same failure mode as SQLite in run #7) and would flatten multi-sentence headings (e.g. 'One Repo. One Learning Agent.' → 'One repo. one learning agent.'). That remediation is a separate baseline-cleanup task (Phase 3 candidate: widen PROPER_NOUNS allowlist + teach Rule 3.1 about sentence-boundary capitalization), not a release-blocker — the 22 findings have been present since run #1 and don't affect the v0.3.0 deliverables. New content (release notes + CHANGELOG + the v0.3.0 README section at lines 59–87) passes --check clean. Release is green to ship."
     }
   ]
 }
