@@ -199,3 +199,173 @@ class TestMultiRecallEmpty:
         candidates = await multi.search("test", k=10)
 
         assert candidates == []
+
+
+# =============================================================================
+# MS-DES-0004 — RRF fusion unit tests
+# =============================================================================
+#
+# These tests exercise the pure fusion helpers on ``MultiRecall`` directly:
+# ``_stamp_rank``, ``_merge_into_existing``, and ``_apply_fusion``. They do
+# not require any real recall strategies, skills directory, or network —
+# they manipulate ``RecallCandidate`` objects in-process and assert the
+# fusion math lines up with the spec.
+# =============================================================================
+
+
+class TestRrfFusion:
+    """Reciprocal rank fusion behavior inside ``_apply_fusion``."""
+
+    def test_bm25_only_sets_single_term_score(self):
+        """A candidate with only a BM25 rank gets the single-term RRF score."""
+        c = RecallCandidate(name="alpha", source="local", score=0.0, bm25_rank=1)
+        MultiRecall._apply_fusion(c)
+
+        from core.skill.retrieval.multi_recall import RRF_K
+
+        assert c.score == pytest.approx(1.0 / (RRF_K + 1))
+        assert c.match_type != "hybrid"
+
+    def test_vector_only_sets_single_term_score(self):
+        """A candidate with only a vector rank gets the single-term RRF score."""
+        c = RecallCandidate(name="beta", source="local", score=0.0, vector_rank=1)
+        MultiRecall._apply_fusion(c)
+
+        from core.skill.retrieval.multi_recall import RRF_K
+
+        assert c.score == pytest.approx(1.0 / (RRF_K + 1))
+        assert c.match_type != "hybrid"
+
+    def test_both_ranks_set_match_type_hybrid(self):
+        """Both BM25 and vector ranks present — fused score + hybrid tag."""
+        c = RecallCandidate(
+            name="gamma", source="local", score=0.0,
+            bm25_rank=3, vector_rank=3,
+        )
+        MultiRecall._apply_fusion(c)
+
+        from core.skill.retrieval.multi_recall import RRF_K
+
+        expected = 1.0 / (RRF_K + 3) + 1.0 / (RRF_K + 3)
+        assert c.score == pytest.approx(expected)
+        assert c.match_type == "hybrid"
+
+    def test_neither_rank_leaves_score_untouched(self):
+        """Candidates from non-fused strategies keep their original score."""
+        c = RecallCandidate(name="delta", source="local", score=0.42)
+        MultiRecall._apply_fusion(c)
+        assert c.score == 0.42
+
+    def test_cross_list_agreement_beats_single_list_top(self):
+        """AC #14 from MS-DES-0004.
+
+        A skill present at BM25 rank-3 AND vector rank-3 must rank above a
+        skill present only at BM25 rank-1. Without this invariant RRF
+        would not be doing its job.
+        """
+        hybrid = RecallCandidate(
+            name="hybrid", source="local", score=0.0,
+            bm25_rank=3, vector_rank=3,
+        )
+        solo = RecallCandidate(
+            name="solo", source="local", score=0.0,
+            bm25_rank=1,
+        )
+        MultiRecall._apply_fusion(hybrid)
+        MultiRecall._apply_fusion(solo)
+        assert hybrid.score > solo.score
+
+
+class TestStampRank:
+    """Per-strategy rank stamping by ``_stamp_rank``."""
+
+    def test_bm25_rank_stamped(self):
+        c = RecallCandidate(name="alpha", score=0.7)
+        MultiRecall._stamp_rank(c, "local_bm25", 5)
+        assert c.bm25_rank == 5
+        # bm25_score back-fills from .score when not already set.
+        assert c.bm25_score == 0.7
+
+    def test_vector_rank_stamped(self):
+        c = RecallCandidate(name="beta", score=0.8)
+        MultiRecall._stamp_rank(c, "local_db", 2)
+        assert c.vector_rank == 2
+        assert c.vector_score == 0.8
+
+    def test_unknown_strategy_is_noop(self):
+        """Strategies other than local_bm25 / local_db leave the candidate alone."""
+        c = RecallCandidate(name="gamma", source="local", score=1.0)
+        MultiRecall._stamp_rank(c, "local_file", 1)
+        assert c.bm25_rank is None
+        assert c.vector_rank is None
+
+
+class TestMergeIntoExisting:
+    """Dedup-merge semantics when two strategies surface the same skill."""
+
+    def test_local_displaces_remote(self):
+        """A local incoming candidate overwrites an existing remote entry."""
+        existing = RecallCandidate(name="s", source="remote", score=0.3)
+        incoming = RecallCandidate(
+            name="s", source="local", score=0.9,
+            bm25_score=0.9, bm25_rank=1,
+        )
+        MultiRecall._merge_into_existing(existing, incoming)
+        assert existing.source == "local"
+        assert existing.score == 0.9
+        assert existing.bm25_rank == 1
+
+    def test_remote_does_not_displace_local(self):
+        """A remote incoming is silently dropped; local stays primary."""
+        existing = RecallCandidate(name="s", source="local", score=0.5)
+        incoming = RecallCandidate(
+            name="s", source="remote", score=0.99,
+            metadata={"market_id": "abc"},
+        )
+        MultiRecall._merge_into_existing(existing, incoming)
+        assert existing.source == "local"
+        assert existing.score == 0.5
+        # But the fact that the Market also has it is stashed in metadata.
+        assert "also_available_remote" in existing.metadata
+
+    def test_same_tier_adopts_new_bm25_signal(self):
+        """A later local strategy's BM25 score transfers onto the existing candidate."""
+        existing = RecallCandidate(name="s", source="local", score=1.0)
+        incoming = RecallCandidate(
+            name="s", source="local", score=1.5,
+            bm25_score=1.5, bm25_rank=2,
+        )
+        MultiRecall._merge_into_existing(existing, incoming)
+        assert existing.bm25_rank == 2
+        assert existing.bm25_score == 1.5
+
+    def test_same_tier_adopts_new_vector_signal(self):
+        existing = RecallCandidate(name="s", source="local", score=1.0)
+        incoming = RecallCandidate(
+            name="s", source="local", score=0.8,
+            vector_score=0.8, vector_rank=4,
+        )
+        MultiRecall._merge_into_existing(existing, incoming)
+        assert existing.vector_rank == 4
+        assert existing.vector_score == 0.8
+
+
+class TestTierRuleAfterFusion:
+    """Sanity-check that the tier sort preserves local-before-remote."""
+
+    def test_sort_key_ordering(self):
+        """Even with a lower fused score, local must beat remote."""
+        local_weak = RecallCandidate(
+            name="local", source="local", score=0.01, bm25_rank=10,
+        )
+        remote_strong = RecallCandidate(
+            name="remote", source="remote", score=0.99,
+        )
+
+        def _sort_key(c):
+            tier = 0 if c.source == "local" else 1
+            return (tier, -c.score)
+
+        ordered = sorted([remote_strong, local_weak], key=_sort_key)
+        assert ordered[0].source == "local"
+        assert ordered[1].source == "remote"

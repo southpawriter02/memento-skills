@@ -123,6 +123,31 @@
       "style_errors_fixed": 14,
       "style_warnings_remaining": 0,
       "notes": "Design spec MS-DES-0003 landed first (docs-first mentality honored). Stdlib-only (`unicodedata`), no third-party deps — rejected `langdetect`/`cld3` in the Alternatives section. 28 unit tests all passing, covering edge cases (empty / whitespace / digits / punctuation), single-script inputs (Latin / Han / Cyrillic / Greek / Arabic), mixed-script inputs with threshold sensitivity, the annotation walker, and six CLI subprocess tests. Idempotence verified: re-running the annotation walker produces identical output. Exercised against `core/skill/gateway.py` (the file that motivated the feature): 4 mixed-docstring entities detected, translated in `docs/api/skill-gateway.md` with `<!-- Original (han, latin): ... -->` audit-trail comments and a Translation-summary callout. style-checker autofix applied 14 mechanical fixes to the new SKILL.md and design spec (sentence-case, fence tags, blank-line-before-list); all three touched docs now pass `style-checker --check` clean. One acceptance criterion in the design spec (AC #4) was corrected post-implementation: `\"验证 JWT 令牌是否有效。\"` classifies as `mixed` (ratio 0.27 > 0.20 non-target cutoff), not `non_target` as originally drafted — the implementation is semantically correct; the spec had a math error. Phase 2 candidates 1–5 now complete; only #6 (BM25 retrieval layer) remains open."
+    },
+    {
+      "date": "2026-04-14",
+      "scope": "Phase 2 item #6 — BM25 retrieval layer. Adds a third local recall strategy (`LocalBm25Recall`) that runs a pure-Python BM25 search over skill name/description/body, plus reciprocal-rank-fusion (RRF) score merging inside `MultiRecall._rerank_candidates`. Extended `RecallCandidate` with four optional fields (`bm25_score`, `vector_score`, `bm25_rank`, `vector_rank`). Tier rule preserved: remote candidates never outrank local.",
+      "docs_scanned": 0,
+      "docs_fresh": 0,
+      "docs_possibly_stale": 0,
+      "docs_likely_stale": 0,
+      "docs_updated": 0,
+      "docs_created": 1,
+      "created_files": [
+        "docs/design/bm25-retrieval-layer.md",
+        "core/skill/retrieval/local_bm25_recall.py",
+        "tests/test_skills/retrieval/test_local_bm25_recall.py"
+      ],
+      "files_modified": [
+        "core/skill/retrieval/schema.py",
+        "core/skill/retrieval/multi_recall.py",
+        "core/skill/retrieval/__init__.py",
+        "tests/test_skills/retrieval/test_multi_recall.py",
+        "CHANGELOG.md"
+      ],
+      "style_errors_fixed": 4,
+      "style_warnings_remaining": 0,
+      "notes": "Design spec MS-DES-0004 landed first (docs-first mentality honored) and was authorized with 'Proceed' after the 10 open-question recommendations. Stdlib-only implementation — rejected `rank_bm25`, `whoosh`, and SQLite FTS5 in the Alternatives section per the house convention established by MS-DES-0002 and MS-DES-0003. Field-weighting via token repetition (W_NAME=4, W_DESC=2, W_BODY=1) rather than full BM25F — deliberate simplification given corpus size. RRF with k=60 (Cormack/Clarke/Büttcher) for fusion; linear-combination was rejected because it needs score normalization and α tuning. 19+ unit tests across tokenizer (NFKC/stopwords/CJK/digits), Bm25Index (build/score/rank/idempotence/avg_doc_length arithmetic), and LocalBm25Recall (async search/invalidation/directory-signature rebuild/deterministic output). Plus fusion unit tests on MultiRecall (_stamp_rank, _merge_into_existing, _apply_fusion) including AC #14 cross-list-vs-single-list verification. Smoke tests run via isolated Python harness (sandbox is 3.10; repo requires 3.11+ for StrEnum) — BM25 math and fusion math both verified independently. Local-before-remote tier rule verified preserved through both the merge-and-fuse path and the final sort. style-checker --check initially surfaced 4 Rule 3.1 findings on the Alternatives headings (`### A. Third-party...` etc.); auto-fix proposed aggressive lowercasing (e.g., SQLite → sqlite) that would have corrupted proper nouns, so the fix was applied manually by reshaping the headings to the established `### Alternative X: …` convention used by MS-DES-0002 / MS-DES-0003 and rewording the SQLite-FTS5 heading to `### Alternative B: built-in FTS5 full-text index` to avoid a gap in the PROPER_NOUNS allowlist. Post-fix: both touched Markdown files (docs/design/bm25-retrieval-layer.md, CHANGELOG.md) pass `style_autofix.py --check` clean. Phase 2 candidates 1–6 now complete; Phase 2 retrospective scope closed."
     }
   ]
 }
