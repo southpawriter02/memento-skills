@@ -11,7 +11,7 @@ and this project aspires to follow [Semantic Versioning](https://semver.org/spec
 
 ### Added
 
-- _(nothing yet — next release window)_
+- **Release-version drift checker (`build_scripts/check_release_versions.py`)** — stdlib-only Python 3.11+ script that reads the canonical release version from `pyproject.toml [project].version` and verifies every other place the version appears in the repo matches it. Ships with a declarative registry of the ten known call sites (three `pyproject.toml` entries including the Flet and Briefcase packagers, `version.py`, `middleware/config/system_config.json`, and the five hard-coded Python-literal fallbacks in `cli/main.py`, `bootstrap.py`, `middleware/storage/schemas.py`, `middleware/storage/models.py`, `gui/modules/auto_update_manager.py`). Emits human-readable or `--json` drift reports; exits `0` on clean, `1` on drift, `2` on usage error. Covered by **12 unit tests** (`build_scripts/test_check_release_versions.py`) — stdlib `unittest`, no pytest dependency, all passing in ~7ms against isolated tmp-dir fixture repos. Design spec at [`docs/design/release-checklist-script.md`](docs/design/release-checklist-script.md) (MS-DES-0005). Closes Phase 3 candidate #5 from the Phase 2 retrospective.
 
 ### Changed
 
