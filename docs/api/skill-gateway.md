@@ -60,7 +60,7 @@ Discover available skills by strategy.
 
 **Returns:** `list[SkillManifest]` — the matching skill manifests, or `[]` if any error occurs. Failures are logged but not raised.
 
-### `search(query, k=10, cloud_only=False)` — async
+### `search(query, k=10, cloud_only=false)` — async
 
 Search for skills in the cloud Skill Market. Useful for discovering skills that aren't yet installed locally.
 
@@ -72,7 +72,7 @@ Search for skills in the cloud Skill Market. Useful for discovering skills that 
 
 **Returns:** `list[SkillManifest]` — zero-or-more matching manifests.
 
-### `execute(skill_name, params=None, options=None, session_id=None, on_step=None)` — async
+### `execute(skill_name, params=none, options=none, session_id=none, on_step=none)` — async
 
 Run an installed skill end-to-end inside the sandboxed executor.
 

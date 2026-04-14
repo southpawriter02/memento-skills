@@ -19,22 +19,27 @@ The process works in stages:
 
 The scanner (`scripts/doc_freshness_scanner.py`) performs these steps:
 
-1. **Topic extraction** — For each markdown document, it extracts "topics":
-   - Terms in backticks (e.g., `config.json`, `auth` module)
-   - Heading text (from # ## ### headings)
-   - File paths mentioned in the doc (e.g., src/auth.py, docs/api.md)
+1. **Path-reference extraction** — For each markdown document, the scanner builds a set of repo-relative paths the doc explicitly mentions. Sources:
+   - Inline code spans that look like paths (`` `core/skill/gateway.py` ``, `` `skills/` ``) — treated as repo-relative.
+   - Bare path-like tokens in prose (e.g., `src/auth.py`) — treated as repo-relative.
+   - Markdown link targets that resolve to repo-relative paths — `../` and `./` segments are resolved against the doc's own directory, per CommonMark semantics.
+   - External URLs (`http(s)://`, `mailto:`, `#anchor`) are ignored.
+   - References shorter than three characters are dropped to avoid matching short generic strings like `io`.
 
-2. **Code change detection** — It queries Git for commits touching non-documentation code files since a specified date (default: 30 days ago). Each commit records which files changed and the commit subject.
+2. **Code-change detection** — The scanner queries Git for commits touching non-documentation code files since a specified date (default: 30 days ago). Each commit records its hash, date, subject, and full list of changed files.
 
-3. **Cross-referencing** — For each document, the scanner checks:
-   - Do any recent commits touch files that the doc mentions?
-   - Do commit subjects contain topics the doc references?
-   - Build a list of "related code changes" for each doc
+3. **Path-overlap matching** — For each document, the scanner flags a commit as related if at least one of the commit's changed files overlaps with at least one path the doc references. Overlap rules:
+   - A referenced **directory** (trailing slash, e.g. `core/skill/`) matches any file underneath that directory.
+   - A referenced **file** matches that exact file OR any sibling file in the same directory (common case: a doc names one module in a package but the change touched a neighbour).
+   - Bare root-level filenames do not match other root-level files.
+   - Commit subjects are **not** matched — subject-line substring matching was removed because it produced frequent false positives for generic terms like `skill` or `agent`. See `docs/design/doc-freshness-relevance-filter.md` for the rationale.
 
 4. **Freshness classification** — Based on the last update date of the doc and the most recent related code change:
    - **fresh**: No related code changes found, OR doc was updated after all related changes
    - **possibly_stale**: Related code changed, but doc was updated within 30 days of that change
    - **likely_stale**: Related code changed and doc hasn't been updated within 30 days of that change
+
+**Deliberate tradeoff:** a doc that mentions no paths at all will always classify as `fresh` with zero related changes. The scanner is input to human judgment, not a gate; false negatives are preferred over false positives because false positives erode trust in the signal.
 
 ## Report template
 
@@ -82,6 +87,7 @@ python scripts/doc_freshness_scanner.py \
   --repo-path /path/to/repo \
   --docs-path docs/ \
   --since 2026-03-13 \
+  --include-untracked \
   --output results.json
 ```
 
@@ -90,7 +96,10 @@ python scripts/doc_freshness_scanner.py \
 - `--repo-path` — Path to Git repository (default: current directory)
 - `--docs-path` — Path to docs directory, relative to repo (default: `docs/`)
 - `--since` — Date filter for code changes (ISO 8601, e.g. `2026-03-13`; default: 30 days ago)
+- `--include-untracked` — Also scan Markdown files that are not yet tracked by Git. When this flag is set, the scanner falls back to the filesystem's last-modified time (`mtime`) for the `last_updated` field of any untracked file, and each document record gains a `tracked` boolean so downstream consumers can tell which source produced the timestamp. Default: off.
 - `--output` — Write results to JSON file (default: print to stdout)
+
+**When to use `--include-untracked`.** The default mode reads timestamps from `git log`, which is correct and reproducible but blind to files that haven't been committed yet. On a working branch where you've just added a new doc, the default scan silently skips it. Turn this flag on during drafting to include those files; turn it off for release-time audits where only committed state matters.
 
 ## JSON output structure
 
@@ -104,6 +113,7 @@ The scanner outputs JSON with this structure:
   "documents": [
     {
       "path": "docs/getting-started.md",
+      "tracked": true,
       "last_updated": "2026-02-15",
       "days_since_update": 57,
       "status": "likely_stale",
@@ -112,7 +122,8 @@ The scanner outputs JSON with this structure:
           "hash": "abc1234",
           "date": "2026-04-01",
           "subject": "refactor auth module",
-          "files": ["src/auth.py"]
+          "files": ["src/auth.py"],
+          "matched_topics": ["src/auth.py"]
         }
       ],
       "matched_topics": ["auth", "config.json"],
@@ -130,9 +141,11 @@ The scanner outputs JSON with this structure:
 
 ## Limitations and considerations
 
-- **Topic matching is heuristic** — The scanner looks for file paths and terms mentioned in docs, but may miss implicit references or architectural changes not reflected in filenames.
+- **Path-overlap matching has blind spots** — If a doc describes a concept without naming any file or directory path, no commits will match and the doc will always classify as `fresh`. This is a deliberate tradeoff (see `docs/design/doc-freshness-relevance-filter.md`). Prose-only docs that describe code areas indirectly should be spot-checked by humans.
+- **Renames not followed** — A file rename splits git history; `--follow` would stitch it back together but is not yet implemented. A doc that references the old path will stop matching once the file moves.
 - **Binary files ignored** — The scanner works only with `.md` files; other documentation formats (RST, AsciiDoc, HTML, PDFs) are not scanned.
 - **Merge commits excluded** — The scanner filters out merge commits to focus on actual code changes.
 - **Docs-only commits** — Commits that only touch documentation files are excluded from the scan, so pure documentation updates don't trigger "staleness" flags.
 - **Date precision** — The scanner uses day-level precision (YYYY-MM-DD). Time-of-day is not considered in comparisons.
+- **Untracked docs are skipped by default** — Use `--include-untracked` during drafting if you want in-flight files scanned; those entries will appear with `tracked: false` and a filesystem `mtime`-derived `last_updated`.
 

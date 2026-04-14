@@ -51,6 +51,55 @@
       "style_errors_fixed": 0,
       "style_warnings_remaining": 0,
       "notes": "Both previously-flagged false positives (agent_execution_flow.md, llm_tool_call_compatibility.md) now correctly classify as fresh. The commits that remain in their 'related_code_changes' lists are legitimate — they touch files the docs explicitly name (core/memento_s/agent.py, middleware/llm/llm_client.py). The meta-commit c41aa41 no longer appears in any doc's related list. 17/17 unit tests pass (skills/doc-freshness/scripts/test_relevance.py). Design note: docs/design/doc-freshness-relevance-filter.md."
+    },
+    {
+      "date": "2026-04-13",
+      "scope": "Run after landing Phase 2 items 2 and 3 in a single pass: --include-untracked flag on doc-freshness, plus style guide Rules 3.6 (no trailing colons on headings) and 9.1 (MDX front matter). Scanned with --include-untracked enabled to exercise the new code path.",
+      "docs_scanned": 11,
+      "docs_fresh": 11,
+      "docs_possibly_stale": 0,
+      "docs_likely_stale": 0,
+      "docs_updated": 0,
+      "docs_created": 0,
+      "files_modified": [
+        "skills/doc-freshness/scripts/doc_freshness_scanner.py",
+        "skills/doc-freshness/scripts/test_relevance.py",
+        "skills/doc-freshness/SKILL.md",
+        "skills/style-checker/references/style-guide.md",
+        "skills/style-checker/SKILL.md",
+        "CHANGELOG.md"
+      ],
+      "style_errors_fixed": 0,
+      "style_warnings_remaining": 0,
+      "notes": "All 11 docs classified fresh (3 new docs surfaced via --include-untracked: docs/api/skill-gateway.md, docs/design/doc-freshness-relevance-filter.md, docs/phase-1-retrospective.md — all now tracked after subsequent commits). 20/20 unit tests pass, including 3 new integration tests that spin up a temp git repo to verify the --include-untracked toggle. Phase 2 candidates 1, 2, and 3 from docs/phase-1-retrospective.md are now complete."
+    },
+    {
+      "date": "2026-04-13",
+      "scope": "Phase 2 item #4 — style-checker auto-fix script. Converts the interactive, agent-driven style checker into a deterministic CLI linter suitable for pre-commit hooks and CI. Implements the six mechanical rules (3.1 sentence case, 3.2 heading-level jumps, 3.6 trailing colons, 4.1 fence language tags, 6.1 blank line before lists, 7.1 descriptive link text — report-only).",
+      "docs_scanned": 6,
+      "docs_fresh": 6,
+      "docs_possibly_stale": 0,
+      "docs_likely_stale": 0,
+      "docs_updated": 6,
+      "docs_created": 2,
+      "created_files": [
+        "skills/style-checker/scripts/style_autofix.py",
+        "skills/style-checker/scripts/test_style_autofix.py",
+        "docs/design/style-checker-autofix-script.md"
+      ],
+      "files_modified": [
+        "skills/style-checker/SKILL.md",
+        "CHANGELOG.md",
+        "docs/design/style-checker-autofix-script.md",
+        "docs/phase-1-retrospective.md",
+        "docs/tech-writing-adaptation-plan.md",
+        "docs/api/skill-gateway.md",
+        "docs/design/doc-freshness-relevance-filter.md",
+        "docs/release-notes-v0.2.0.md"
+      ],
+      "style_errors_fixed": 0,
+      "style_warnings_remaining": 0,
+      "notes": "Design spec MS-DES-0002 landed first (docs-first mentality honored). Script is stdlib-only, Python 3.10+, ~600 lines with inline commentary; test suite is 34 plain-assert tests (no pytest dependency), all passing. Idempotence verified: second-pass run on the 6 authored docs reports 'checked 6 files: clean'. Fence-aware and MDX front-matter-aware — content inside code fences and YAML front matter is passed through verbatim. Rule 7.1 is report-only (link-text rewriting needs context the script doesn't have). 156 findings on legacy pre-style-guide docs (AUTO_UPDATE_README.md, CHANGELOG_bounded_context_merge.md, UPDATE_SUMMARY.md, agent_execution_flow.md, llm_tool_call_compatibility.md, and CJK-content files) were intentionally left unfixed — those predate the style guide and belong to a separate baseline-cleanup task, not this feature. Phase 2 candidates 1–4 complete; remaining open items from the retrospective: #5 (doc-generator translation/localization pass) and #6 (BM25 retrieval layer for skill search)."
     }
   ]
 }

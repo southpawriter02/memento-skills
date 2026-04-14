@@ -112,6 +112,19 @@ Headings should describe what the reader will accomplish, not internal system st
 
 If a heading has no content below it (or only "TBD" / "TODO"), either fill it in or remove it. Empty sections signal unfinished work.
 
+### Rule 3.6 — No trailing colons on headings (WARNING)
+
+Headings should not end with a colon. A colon implies "a list or explanation follows immediately," but Markdown heading syntax already establishes that relationship — the colon is redundant visual noise and hurts scannability. It also causes trouble for auto-generated anchors and tables of contents, which typically strip or URL-encode punctuation and produce inconsistent slugs.
+
+**Good:** `### Configuration`
+**Good:** `### Request parameters`
+**Bad:** `### Configuration:`
+**Bad:** `### Request parameters:`
+
+**Rationale:** Reference docs (API references, configuration guides) often have headings like `### Parameters:` followed by a list. Drop the colon — the heading already signals the context.
+
+**Auto-fix:** The style-checker removes trailing colons from headings automatically (see Step 5 in `SKILL.md`).
+
 ---
 
 ## 4. Code and Technical Elements
@@ -270,9 +283,51 @@ Table headers should clearly label what's in each column. Avoid single-letter or
 
 ## 9. Project-Specific Rules
 
-This section is intentionally left as a placeholder. Add rules here that are specific to your project, codebase, or organization.
+This section covers rules that apply to specific file formats or project conventions rather than to prose in general.
 
-Examples of project-specific rules:
+### Rule 9.1 — MDX front matter (WARNING)
+
+MDX files (`.mdx`) — Markdown with embedded JSX, used by doc frameworks like Docusaurus, Nextra, and Astro — should begin with a YAML front-matter block that declares at minimum a `title` and a `description`. Some frameworks additionally expect `sidebar_position`, `sidebar_label`, or `slug`; follow the framework's schema if the project uses one.
+
+**Good:**
+
+```mdx
+---
+title: Column view width
+description: How the Column view calculates and constrains column width when resizing.
+sidebar_position: 3
+---
+
+# Column view width
+
+...
+```
+
+**Bad (no front matter):**
+
+```mdx
+# Column view width
+
+...
+```
+
+**Bad (front matter present but missing `description`):**
+
+```mdx
+---
+title: Column view width
+---
+```
+
+**Rationale:** Front matter is how MDX-based doc sites populate page titles, social-card descriptions, sidebar entries, and search indexes. A missing `description` commonly surfaces as a blank `<meta name="description">` tag, which hurts both SEO and in-site preview cards. The `title` field is also the canonical source for the page's `<title>` tag — relying on an H1 alone leaves the tab title blank on some frameworks.
+
+**Scope:** This rule only applies to `.mdx` files. Plain `.md` files are exempt unless the project's framework explicitly requires front matter there too (document that as its own project-specific rule if so).
+
+**Not auto-fixed.** Generating a description requires understanding the document's purpose. The style-checker flags missing or incomplete front matter but does not synthesize values.
+
+### Project-specific rule template
+
+Add your own rules in this section. A few examples of the kinds of rules that commonly live here:
 
 - **Product name capitalization:** "Always capitalize 'Memento-Skills' with a hyphen. Never 'memento skills' or 'Memento Skills'."
 - **Preferred terms:** "Use 'skill' not 'plugin' or 'extension' when referring to agent capabilities."

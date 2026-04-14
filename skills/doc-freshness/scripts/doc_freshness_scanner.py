@@ -15,6 +15,10 @@ Options:
     --since DATE            Include code changes after this date (ISO 8601 or relative
                             e.g. '30 days ago'; default: 30 days ago)
     --output PATH           Write JSON to this file (default: stdout)
+    --include-untracked     Include docs with no Git history, using filesystem
+                            mtime as a fallback (default: off — untracked docs
+                            are skipped). Each document record gains a
+                            ``tracked`` boolean when this flag is used.
 
 Output format:
     {
@@ -346,7 +350,8 @@ def get_doc_last_modified(doc_path: str, repo_path: str) -> str | None:
         repo_path: Path to the Git repository.
 
     Returns:
-        ISO 8601 date string (YYYY-MM-DD), or None if no history found.
+        ISO 8601 date string (YYYY-MM-DD), or None if no history found
+        (typically an untracked file).
     """
     # git log -1 --format=%ai returns date in format: 2026-04-13 15:30:00 +0000
     output = run_git(["log", "-1", "--format=%ai", "--", doc_path], repo_path)
@@ -354,6 +359,29 @@ def get_doc_last_modified(doc_path: str, repo_path: str) -> str | None:
         # Extract just the date portion (YYYY-MM-DD)
         return output.strip()[:10]
     return None
+
+
+def get_doc_mtime_date(full_path: Path) -> str | None:
+    """Get the file's last-modified date from the filesystem.
+
+    Used as a fallback for untracked files (those with no Git history)
+    when ``--include-untracked`` is enabled. Filesystem mtime is less
+    reliable than Git's commit history — it reflects any touch to the
+    file, including unrelated editor saves — but for work-in-progress
+    branches it's the only signal available.
+
+    Args:
+        full_path: Absolute path to the file on disk.
+
+    Returns:
+        ISO 8601 date string (YYYY-MM-DD), or None if the file can't be
+        statted (broken symlink, permission error, etc.).
+    """
+    try:
+        mtime = full_path.stat().st_mtime
+    except OSError:
+        return None
+    return datetime.fromtimestamp(mtime, tz=timezone.utc).strftime("%Y-%m-%d")
 
 
 def get_recent_code_commits(
@@ -632,6 +660,7 @@ def scan_documentation(
     repo_path: str = ".",
     docs_path: str = "docs/",
     since: str = None,
+    include_untracked: bool = False,
 ) -> dict:
     """Scan documentation directory and cross-reference against Git history.
 
@@ -640,6 +669,14 @@ def scan_documentation(
         docs_path: Path to documentation directory (relative to repo root).
         since: Date string for filtering code changes. If None, defaults to
                30 days ago.
+        include_untracked: When True, documents that have no Git history
+                           (e.g., brand-new files on a work-in-progress
+                           branch) are included using filesystem mtime as
+                           their last-modified date. A ``tracked`` boolean
+                           field is added to each document record so
+                           consumers can tell the two cases apart. When
+                           False (default), untracked docs are skipped
+                           silently — the original behaviour.
 
     Returns:
         Dictionary matching the output format described in module docstring.
@@ -674,11 +711,20 @@ def scan_documentation(
         # Get path relative to repo root
         rel_path = md_file.relative_to(repo_path)
 
-        # Get document's last modification date
+        # Get document's last modification date from Git history first.
         last_updated = get_doc_last_modified(str(rel_path), str(repo_path))
+        tracked = last_updated is not None
+
         if not last_updated:
-            # If no git history, skip the doc
-            continue
+            # No Git history for this file (untracked, or never committed).
+            if include_untracked:
+                last_updated = get_doc_mtime_date(md_file)
+                if not last_updated:
+                    # Couldn't stat the file either — skip.
+                    continue
+            else:
+                # Original behaviour: silently skip untracked files.
+                continue
 
         # Read document content.
         content = md_file.read_text(encoding="utf-8", errors="ignore")
@@ -706,11 +752,15 @@ def scan_documentation(
         doc_date = datetime.fromisoformat(last_updated).date()
         days_since_update = (datetime.now(timezone.utc).date() - doc_date).days
 
-        # Build document record
+        # Build document record. The ``tracked`` flag tells downstream
+        # consumers (the pipeline orchestrator, the feedback log, etc.)
+        # whether ``last_updated`` came from Git history (authoritative)
+        # or filesystem mtime (best-effort).
         doc_record = {
             "path": str(rel_path),
             "last_updated": last_updated,
             "days_since_update": days_since_update,
+            "tracked": tracked,
             "status": status,
             "related_code_changes": related_commits,
             "matched_topics": sorted(list(topics))[:10],  # Top 10 topics
@@ -761,6 +811,16 @@ def main():
         "--output",
         help="Write JSON to file (default: stdout)",
     )
+    parser.add_argument(
+        "--include-untracked",
+        action="store_true",
+        help=(
+            "Include docs that have no Git history, using filesystem "
+            "mtime as a fallback. Each document record gains a "
+            "`tracked` boolean field. Useful on work-in-progress "
+            "branches; less reliable than Git history."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -768,6 +828,7 @@ def main():
         repo_path=args.repo_path,
         docs_path=args.docs_path,
         since=args.since,
+        include_untracked=args.include_untracked,
     )
 
     output = json.dumps(result, indent=2, ensure_ascii=False)

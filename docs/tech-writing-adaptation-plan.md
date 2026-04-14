@@ -1,4 +1,4 @@
-# Memento-Skills Adaptation Plan: Technical Writing Agent
+# Memento-Skills adaptation plan: technical writing agent
 
 > **Author:** Ryan (with Claude)
 > **Date:** 2026-04-13
@@ -102,7 +102,7 @@ Unlike many creative tasks, technical writing quality has objective dimensions: 
 
 ---
 
-## 3. Phase 1 — Learn by building skills
+## 3. Phase 1 — learn by building skills
 
 **Goal:** Deploy Memento-Skills locally, author 4-6 custom skills for technical writing, and use them on real tasks to understand the framework's strengths and limitations.
 
@@ -164,7 +164,7 @@ All 6 skills are authored as Cowork skills (pivoted from building within the Mem
 
 ---
 
-## 4. Phase 2 — Evolve into a custom system
+## 4. Phase 2 — evolve into a custom system
 
 **Goal:** Take the lessons from Phase 1 and build a purpose-built technical writing agent, borrowing the Memento-Skills architecture but optimizing for your specific workflow.
 
@@ -189,7 +189,7 @@ All 6 skills are authored as Cowork skills (pivoted from building within the Mem
 | **LLM routing** | The multi-provider abstraction (litellm) is heavier than needed if you're standardized on Anthropic | Can simplify, though keeping litellm isn't harmful |
 | **Language** | The framework is Python; you prefer C# | Phase 2 could involve porting core concepts to a C# implementation, particularly if you want tighter .NET toolchain integration |
 
-### Possible Phase 2 architectures
+### Possible phase 2 architectures
 
 **Option A: Fork and Trim** — Fork the Memento-Skills repo, strip out IM/GUI/unused middleware, and extend the skill system with technical-writing-specific features. Stays in Python.
 
@@ -201,7 +201,7 @@ All 6 skills are authored as Cowork skills (pivoted from building within the Mem
 
 ---
 
-## 5. Skill designs (Phase 1)
+## 5. Skill designs (phase 1)
 
 ### 5.1 `style-checker`
 
@@ -210,6 +210,7 @@ All 6 skills are authored as Cowork skills (pivoted from building within the Mem
 **What It Does:** Takes a Markdown file (or set of files) and a style guide reference, then produces a structured report of style violations with suggested fixes. Think of it as a "linter for prose."
 
 **Style Guide Dimensions:**
+
 - Terminology consistency (e.g., "endpoint" vs. "API endpoint" vs. "route")
 - Voice and tone (active voice, second person, imperative mood for procedures)
 - Formatting conventions (heading levels, code fence language tags, list styles)
@@ -230,12 +231,14 @@ All 6 skills are authored as Cowork skills (pivoted from building within the Mem
 **Execution Mode:** Knowledge + Playbook (hybrid)
 
 **What It Does:** Generates first-draft documentation from source material. Supports multiple input types:
+
 - Source code (C#, Python, TypeScript) → API reference documentation
 - OpenAPI/Swagger specs → Endpoint documentation
 - Configuration files → Configuration reference guides
 - Markdown specs/PRDs → User-facing guides
 
 **Scripts:**
+
 - `scripts/extract_signatures.py` — Parses source code to extract class/method/parameter signatures (deterministic, scriptable)
 - `scripts/parse_openapi.py` — Converts OpenAPI spec to a structured intermediate format
 
@@ -252,6 +255,7 @@ All 6 skills are authored as Cowork skills (pivoted from building within the Mem
 **What It Does:** Reads Git commit history (optionally filtered by date range, tag range, or path), categorizes commits, and produces a changelog entry following [Keep a Changelog](https://keepachangelog.com/) conventions.
 
 **Scripts:**
+
 - `scripts/git_log_parser.py` — Extracts commits with metadata (hash, author, date, message, files changed)
 - `scripts/categorize_commits.py` — Uses conventional commit prefixes (feat, fix, docs, refactor, etc.) and falls back to LLM classification for non-conventional messages
 - `scripts/format_changelog.py` — Renders the categorized entries into Markdown
@@ -267,6 +271,7 @@ All 6 skills are authored as Cowork skills (pivoted from building within the Mem
 **What It Does:** Scans a documentation directory and cross-references each doc against recent code changes to flag potentially stale content.
 
 **How It Works:**
+
 1. Inventory all `.md` files in the docs directory (last modified date, topics covered)
 2. Get recent Git commits touching source code files
 3. Map code changes to documentation topics (using file paths, module names, and content heuristics)
@@ -284,6 +289,7 @@ All 6 skills are authored as Cowork skills (pivoted from building within the Mem
 **What It Does:** Takes a changelog (or Git history) plus optional supplemental context (migration notes, known issues, deprecations) and drafts user-facing release notes. Unlike the changelog (which is developer-facing and comprehensive), release notes are audience-aware, highlight the most important changes, and explain *why* things changed.
 
 **Key Instruction Areas:**
+
 - Audience awareness (developer? end-user? ops team?)
 - Prioritization (lead with the most impactful changes)
 - Migration guidance (if breaking changes exist)
@@ -314,7 +320,7 @@ All 6 skills are authored as Cowork skills (pivoted from building within the Mem
 
 ---
 
-## 6. Architecture notes for Phase 2
+## 6. Architecture notes for phase 2
 
 ### Git integration points
 

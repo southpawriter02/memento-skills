@@ -120,7 +120,7 @@ Six candidates, in rough effort order:
 
 Recommendation: do item 1 (the `doc-freshness` fix) first. It's small, the bug is documented, and shipping it closes the loop on the most concrete piece of evidence Phase 1 produced. Items 2-3 can ride along in the same commit. Items 4-5 are multi-hour projects worth scheduling individually. Item 6 is a project in its own right.
 
-## Artifacts produced in Phase 1
+## Artifacts produced in phase 1
 
 | File | Purpose |
 |------|---------|

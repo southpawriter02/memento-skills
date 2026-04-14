@@ -99,22 +99,54 @@ Structure the report as follows:
 
 After presenting the report, **immediately offer to fix all ERROR-level and WARNING-level findings in place.** Don't wait for the user to ask — fixing mechanical issues is the whole point.
 
-Say something like: "I found [N] errors and [N] warnings. I'll fix them now — here's what I'm changing:" then list the fixes briefly and apply them using the Edit tool.
+The preferred path is to invoke the **`style_autofix.py` script** that ships with this skill. The script applies every mechanical rule in one deterministic pass, writes the corrected content back to disk, and is safe to run in CI or pre-commit hooks. Only fall back to agent-driven `Edit` operations for files whose findings the script leaves behind (non-auto-fixable findings — see the "NOT to auto-fix" list below).
 
-**What to auto-fix:**
-- Heading case (Rule 3.1) — convert to sentence case
-- Heading level skips (Rule 3.2) — adjust to sequential levels
-- Missing code fence language tags (Rule 4.1) — infer and add the language identifier
-- Missing blank lines before lists (Rule 6.1) — insert the blank line
-- Non-descriptive link text (Rule 7.1) — rewrite to describe the destination
+#### 5a — Run the auto-fix script
 
-**What NOT to auto-fix (present as suggestions instead):**
-- Voice and tone changes (Rules 1.1–1.4) — these involve rewriting prose and the author should approve
-- Sentence length and structure (Rules 2.1–2.4) — splitting sentences changes meaning; suggest but don't rewrite
-- Terminology consistency (Rule 5.1) — which term to standardize on is the author's call
-- Missing alt text (Rule 8.1) — only the author knows the image's purpose
+Invoke from the repo root:
 
-After applying fixes, give a brief summary: "Fixed [N] issues. [N] suggestions remain for your review — see the Warnings and Info sections above."
+```bash
+python3 skills/style-checker/scripts/style_autofix.py <file-or-directory> [<file-or-directory> ...]
+```
+
+Useful flags:
+
+- `--check` — do not write; exit with code 1 if any rule would fire. Appropriate for CI / pre-commit gating.
+- `--dry-run` — do not write; print a unified diff of proposed changes. Appropriate when the user wants a preview before committing.
+- `--rules 3.1,3.6` — run only the listed rules.
+- `--ignore-rules 4.1` — disable specific rules.
+- `--verbose` — one finding per line, written to stdout.
+- `--json` — machine-readable findings list.
+
+The script exits `0` when nothing needed fixing (or fixes were applied in default mode), `1` in `--check` mode with outstanding violations, and `2` on I/O or argument errors.
+
+Say something like: "I found [N] errors and [N] warnings. I'll run the auto-fixer now — here's what will change:" then run the script with `--dry-run` first so the user can see the diff, then without the flag to apply.
+
+#### 5b — What the script auto-fixes
+
+| Rule | Name                                      | Script behavior                                              |
+| :--- | :---------------------------------------- | :----------------------------------------------------------- |
+| 3.1  | Sentence case for headings                | Rewrites heading text; preserves allowlisted proper nouns, acronyms, technical identifiers, and inline code |
+| 3.2  | No skipped heading levels                 | Closes jumps greater than one                                |
+| 3.6  | No trailing colons on headings            | Strips a single trailing `:`                                 |
+| 4.1  | Code fence language tags                  | Infers `json` / `python` / `bash` / `yaml` from body; falls back to `text` |
+| 6.1  | Blank line before lists                   | Inserts a blank line between a paragraph and a following list |
+| 7.1  | Descriptive link text                     | **Reports only** — rewriting needs context the script doesn't have |
+
+#### 5c — What is NOT auto-fixed (present as suggestions instead)
+
+- Voice and tone changes (Rules 1.1–1.4) — these involve rewriting prose and the author should approve.
+- Sentence length and structure (Rules 2.1–2.4) — splitting sentences changes meaning; suggest but don't rewrite.
+- Terminology consistency (Rule 5.1) — which term to standardize on is the author's call.
+- Missing alt text (Rule 8.1) — only the author knows the image's purpose.
+- MDX front matter (Rule 9.1) — the `description` field requires understanding the document's purpose; flag as a WARNING with a template the author can fill in.
+- Generic link text flagged by Rule 7.1 — the script emits a finding; the agent proposes a rewrite based on the link's destination.
+
+After applying fixes, give a brief summary: "Fixed [N] issues via the script. [N] suggestions remain for your review — see the Warnings and Info sections above."
+
+#### 5d — Falling back to Edit-based fixes
+
+If the script is unavailable (for example, running in an environment without a Python 3.10+ interpreter), or if the user asks for line-by-line approval, fall back to applying changes through the `Edit` tool. The rule list above is the authoritative set — apply the same transforms by hand.
 
 ### Step 6 — Offer next steps
 

@@ -33,6 +33,8 @@ from doc_freshness_scanner import (  # noqa: E402  (import after sys.path tweak)
     _path_overlaps,
     extract_path_references,
     find_related_commits,
+    get_doc_mtime_date,
+    scan_documentation,
 )
 
 
@@ -246,6 +248,103 @@ def test_normalize_rejects_out_of_repo():
         "../../../etc/passwd", Path("docs"), resolve_relative_to_doc=True,
     )
     assert result is None, result
+
+
+# ---------------------------------------------------------------------------
+# --include-untracked flag (integration-style tests using a temp git repo)
+# ---------------------------------------------------------------------------
+#
+# These tests initialize a throwaway Git repo in a tempdir, commit one doc,
+# leave another untracked, and assert that the scanner's behaviour matches
+# expectations for both the default mode (untracked skipped) and the
+# ``include_untracked=True`` mode (untracked included with ``tracked=False``).
+#
+# They require ``git`` to be available on PATH. If git is missing, the tests
+# print a skip message and return early rather than failing — the other 17
+# tests are pure-Python and don't need git.
+
+
+def _git_available() -> bool:
+    import shutil
+    return shutil.which("git") is not None
+
+
+def _make_fixture_repo(root: Path) -> None:
+    """Initialize a minimal git repo at ``root`` with one committed doc and
+    one untracked doc. The committed doc references `src/foo.py`; the
+    untracked doc references `src/bar.py`. Neither file actually exists —
+    the scanner only reads docs, not the code it references."""
+    import subprocess
+    (root / "docs").mkdir()
+    committed = root / "docs" / "tracked.md"
+    committed.write_text(
+        "# Tracked\n\nSee `src/foo.py` for details.\n", encoding="utf-8",
+    )
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=root, check=True)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=T",
+         "add", "docs/tracked.md"],
+        cwd=root, check=True,
+    )
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=T",
+         "commit", "-q", "-m", "add tracked doc"],
+        cwd=root, check=True,
+    )
+    # Create the untracked doc after the commit so it never enters history.
+    (root / "docs" / "untracked.md").write_text(
+        "# Untracked\n\nSee `src/bar.py` for details.\n", encoding="utf-8",
+    )
+
+
+def test_untracked_flag_off_skips_untracked_docs():
+    """Default mode: the untracked doc should be silently skipped and
+    absent from the output."""
+    if not _git_available():
+        print("    (skipped — git not available)")
+        return
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _make_fixture_repo(root)
+        result = scan_documentation(repo_path=str(root), docs_path="docs/")
+        paths = {d["path"] for d in result["documents"]}
+        assert "docs/tracked.md" in paths
+        assert "docs/untracked.md" not in paths, paths
+
+
+def test_untracked_flag_on_includes_untracked_docs():
+    """With ``include_untracked=True``, the untracked doc appears with
+    ``tracked=False``; the committed doc appears with ``tracked=True``."""
+    if not _git_available():
+        print("    (skipped — git not available)")
+        return
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _make_fixture_repo(root)
+        result = scan_documentation(
+            repo_path=str(root), docs_path="docs/",
+            include_untracked=True,
+        )
+        by_path = {d["path"]: d for d in result["documents"]}
+        assert "docs/tracked.md" in by_path
+        assert "docs/untracked.md" in by_path
+        assert by_path["docs/tracked.md"].get("tracked") is True
+        assert by_path["docs/untracked.md"].get("tracked") is False
+
+
+def test_get_doc_mtime_date_returns_iso_date():
+    """``get_doc_mtime_date`` should produce a YYYY-MM-DD string for any
+    file that exists, and ``None`` for one that doesn't."""
+    import tempfile
+    with tempfile.NamedTemporaryFile() as tmp:
+        result = get_doc_mtime_date(Path(tmp.name))
+        assert result is not None
+        # Shape check: 10 chars, two hyphens.
+        assert len(result) == 10 and result.count("-") == 2, result
+    # Non-existent path.
+    assert get_doc_mtime_date(Path("/nonexistent/path/xyzzy.md")) is None
 
 
 # ---------------------------------------------------------------------------

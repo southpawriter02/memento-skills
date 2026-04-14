@@ -21,7 +21,7 @@ capabilities (Skill Market, IM Gateway) waiting for you on the other side.
 
 ## Highlights
 
-### Skill Market
+### Skill market
 
 You can now discover, download, and install skills from a shared cloud
 registry. This is the first step toward treating skills as portable, versioned
@@ -29,14 +29,14 @@ artifacts rather than files you copy between machines. Search from the CLI or
 the new GUI, install with one command, and the registry handles dependency
 resolution and auto-update prompts.
 
-### Multi-platform IM Gateway
+### Multi-platform IM gateway
 
 A single gateway, four platforms: Feishu, DingTalk, WeCom, and WeChat. Each
 platform has its own adapter under `3rd/`, but your agents only ever see the
 gateway's unified interface. The companion `im-platform` built-in skill
 exposes the gateway to any agent without extra wiring.
 
-### Bounded Context architecture (breaking)
+### Bounded context architecture (breaking)
 
 The agent and skill modules were re-partitioned into explicit bounded
 contexts with clearer ownership and narrower public surfaces. The practical
