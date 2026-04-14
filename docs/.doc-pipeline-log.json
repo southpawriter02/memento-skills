@@ -16,6 +16,41 @@
       "style_errors_fixed": 0,
       "style_warnings_remaining": 0,
       "notes": "Repo's tracked docs are all <=13 days old (post-v0.2.0 release on 2026-03-31), so no staleness remediation was needed. Untracked files (skills/ and docs/tech-writing-adaptation-plan.md) were excluded from freshness scan because the scanner reads git log timestamps — they will be picked up on the next run after commit. Only 4 commits exist in git history, none using conventional-commit format, so changelog categorization was done by reading the v0.2.0 release body."
+    },
+    {
+      "date": "2026-04-13",
+      "scope": "Second run after committing the tech-writing skill suite under tag v0.2.0. Scan window: since v0.2.0 tag.",
+      "docs_scanned": 8,
+      "docs_fresh": 6,
+      "docs_possibly_stale": 2,
+      "docs_likely_stale": 0,
+      "docs_updated": 0,
+      "docs_created": 0,
+      "files_modified": [
+        "CHANGELOG.md"
+      ],
+      "style_errors_fixed": 0,
+      "style_warnings_remaining": 0,
+      "notes": "Added an [Unreleased] section to CHANGELOG.md covering commit c41aa41 (tech-writing skill suite). No release notes drafted (no new version cut). Both possibly_stale flags (agent_execution_flow.md, llm_tool_call_compatibility.md) are false positives: the scanner treated the new commit as a 'related code change' because it touched repo-root-adjacent paths, but the commit only added files under skills/ and docs/ — nothing that invalidates those two design docs. This is a finding worth feeding back into the freshness scanner's heuristic (Phase 2 improvement: filter 'related changes' by path overlap with the doc's referenced modules rather than any commit touching the repo)."
+    },
+    {
+      "date": "2026-04-13",
+      "scope": "Verification run after landing the path-overlap relevance fix (Phase 2 item 1). Same scan window as run #2.",
+      "docs_scanned": 8,
+      "docs_fresh": 8,
+      "docs_possibly_stale": 0,
+      "docs_likely_stale": 0,
+      "docs_updated": 0,
+      "docs_created": 0,
+      "files_modified": [
+        "skills/doc-freshness/scripts/doc_freshness_scanner.py",
+        "skills/doc-freshness/scripts/test_relevance.py",
+        "docs/design/doc-freshness-relevance-filter.md",
+        "CHANGELOG.md"
+      ],
+      "style_errors_fixed": 0,
+      "style_warnings_remaining": 0,
+      "notes": "Both previously-flagged false positives (agent_execution_flow.md, llm_tool_call_compatibility.md) now correctly classify as fresh. The commits that remain in their 'related_code_changes' lists are legitimate — they touch files the docs explicitly name (core/memento_s/agent.py, middleware/llm/llm_client.py). The meta-commit c41aa41 no longer appears in any doc's related list. 17/17 unit tests pass (skills/doc-freshness/scripts/test_relevance.py). Design note: docs/design/doc-freshness-relevance-filter.md."
     }
   ]
 }

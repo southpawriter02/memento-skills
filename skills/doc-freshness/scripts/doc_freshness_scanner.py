@@ -67,7 +67,200 @@ from pathlib import Path
 
 
 # ---------------------------------------------------------------------------
-# Topic extraction
+# Path reference extraction (primary signal for relevance matching)
+# ---------------------------------------------------------------------------
+#
+# Design note: docs/design/doc-freshness-relevance-filter.md (2026-04-13).
+#
+# The scanner previously matched commits to docs using fuzzy substring
+# matching over every backtick-quoted term and heading in the doc. That
+# produced false positives when docs happened to share common English words
+# ("skill", "agent", "tool") with commit subjects or file paths.
+#
+# The new matching strategy uses only paths the doc *explicitly references* —
+# file paths, directory paths, and the targets of repo-relative Markdown
+# links — and matches them against a commit's changed files via directory-
+# prefix containment. Commit-subject matching is dropped entirely.
+
+# Regex explanations:
+#
+# PATH_IN_BACKTICKS matches an inline-code span whose contents look like a
+# filesystem path: must contain at least one slash OR end in a common file
+# extension. Examples matched:
+#   `core/skill/gateway.py`, `docs/design/`, `skills/`, `config.json`
+#
+# FILE_EXTENSIONS is the set of extensions we accept as "path-like" even
+# without a slash. Extend this list if the project uses additional source
+# languages (e.g., .cs for C#, .tsx for TypeScript React).
+FILE_EXTENSIONS = (
+    "py", "js", "ts", "tsx", "jsx", "json", "yaml", "yml",
+    "md", "mdx", "txt", "conf", "cfg", "sh", "rb", "go", "rs",
+    "cs", "cshtml", "xml", "toml", "ini",
+)
+
+# Inline-code span with a path-looking payload.
+PATH_IN_BACKTICKS = re.compile(
+    r"`([^`\s]*(?:/[^`\s]*|\.(?:" + "|".join(FILE_EXTENSIONS) + r")))`"
+)
+
+# Markdown link with a repo-relative target (./foo, ../foo, or bare path).
+# We skip http(s) links and anchor-only links (#section).
+MARKDOWN_LINK = re.compile(r"\[[^\]]+\]\(([^)\s]+)\)")
+
+# Bare file paths in prose (already present in the original scanner —
+# kept for the path-reference extraction below).
+BARE_FILE_PATH = re.compile(
+    r"(?:^|\s)([a-zA-Z0-9_./\-]+\.(?:" + "|".join(FILE_EXTENSIONS) + r"))"
+)
+
+# Minimum length for a path reference to count. Guards against matching
+# two-character strings like "io" that would overlap almost any path.
+MIN_PATH_LENGTH = 3
+
+
+def _normalize_path_reference(
+    raw: str,
+    doc_dir: Path,
+    *,
+    resolve_relative_to_doc: bool,
+) -> str | None:
+    """Normalize a raw path reference into a repo-relative path string.
+
+    Two resolution modes exist because Markdown has two conventions:
+
+    - **Inline code and bare prose paths** (``resolve_relative_to_doc=False``).
+      When a doc writes `` `core/skill/gateway.py` `` in prose, the path is
+      virtually always intended as a repo-relative path — the author is
+      naming a file in the repo, not a file beneath their own doc's folder.
+      We trust what the author wrote and do no resolution.
+
+    - **Markdown link targets** (``resolve_relative_to_doc=True``). By the
+      CommonMark spec, a link target like ``../core/skill/x.py`` is
+      resolved against the document's own directory. We follow that rule
+      so we can compute the repo-relative form.
+
+    Args:
+        raw: The raw path string as it appears in the doc (may contain
+             ``./``, ``../``, trailing ``/``, etc.).
+        doc_dir: The directory of the doc that contains the reference, as
+                 a Path relative to the repo root.
+        resolve_relative_to_doc: If True, apply Markdown link-target
+                                 resolution semantics. If False, treat the
+                                 path as repo-relative.
+
+    Returns:
+        A normalized, repo-relative path (no leading ``./``; trailing ``/``
+        preserved on directories). Returns None if the reference is too
+        short, is an external URL, an anchor-only link, or resolves
+        outside the repo root.
+    """
+    import os
+
+    if not raw:
+        return None
+
+    # Reject URLs and anchors outright — they're never repo paths.
+    if raw.startswith(("http://", "https://", "mailto:", "#")):
+        return None
+
+    # Preserve whether the caller wrote a trailing slash (indicates a
+    # directory reference vs. a file reference).
+    had_trailing_slash = raw.endswith("/")
+
+    try:
+        if raw.startswith("/"):
+            # Absolute-looking path — strip leading slash and treat the
+            # remainder as repo-relative.
+            candidate = raw.lstrip("/")
+        elif resolve_relative_to_doc:
+            # Markdown link semantics: resolve against the doc's directory.
+            candidate = str(doc_dir / raw)
+        else:
+            # Inline-code / bare-prose path: trust it as-is (repo-relative).
+            candidate = raw
+        normalized = os.path.normpath(candidate)
+    except (ValueError, OSError):
+        return None
+
+    # Force forward slashes so matching works cross-platform and aligns
+    # with the paths Git emits.
+    normalized = normalized.replace(os.sep, "/")
+
+    # Drop leading `./` that normpath may leave on a same-directory reference.
+    if normalized.startswith("./"):
+        normalized = normalized[2:]
+
+    # ``os.path.normpath`` strips trailing slashes; put it back for dirs.
+    if had_trailing_slash:
+        normalized = normalized.rstrip("/") + "/"
+
+    # Reject overly short references.
+    if len(normalized.rstrip("/")) < MIN_PATH_LENGTH:
+        return None
+
+    # Reject anything that resolved out of the repo (starts with `..`).
+    if normalized.startswith(".."):
+        return None
+
+    return normalized
+
+
+def extract_path_references(content: str, doc_rel_path: Path) -> set[str]:
+    """Extract normalized, repo-relative paths that the doc references.
+
+    This is the primary signal for the relevance filter. It considers three
+    sources, in order of reliability:
+
+    1. Inline code spans that look like paths (`core/skill/gateway.py`).
+    2. Markdown link targets that point at repo-relative locations
+       (`[text](../auth.md)`) — external URLs and anchors are ignored.
+    3. Bare path-looking tokens in prose (`src/foo.py mentioned without
+       backticks`).
+
+    Args:
+        content: The full Markdown source as a string.
+        doc_rel_path: The doc's path relative to the repo root. Used to
+                      resolve relative link targets.
+
+    Returns:
+        A set of normalized path strings (directory paths retain their
+        trailing slash; file paths do not). All paths are repo-relative.
+    """
+    refs: set[str] = set()
+    doc_dir = doc_rel_path.parent
+
+    # 1. Inline-code path references — treat as repo-relative.
+    for match in PATH_IN_BACKTICKS.finditer(content):
+        normalized = _normalize_path_reference(
+            match.group(1), doc_dir, resolve_relative_to_doc=False,
+        )
+        if normalized:
+            refs.add(normalized)
+
+    # 2. Markdown link targets — follow CommonMark link resolution (the
+    #    target is relative to the doc's own directory).
+    for match in MARKDOWN_LINK.finditer(content):
+        normalized = _normalize_path_reference(
+            match.group(1), doc_dir, resolve_relative_to_doc=True,
+        )
+        if normalized:
+            refs.add(normalized)
+
+    # 3. Bare path-like tokens in prose — treat as repo-relative, same as
+    #    inline-code references.
+    for match in BARE_FILE_PATH.finditer(content):
+        normalized = _normalize_path_reference(
+            match.group(1), doc_dir, resolve_relative_to_doc=False,
+        )
+        if normalized:
+            refs.add(normalized)
+
+    return refs
+
+
+# ---------------------------------------------------------------------------
+# Topic extraction (retained for display/debugging only — no longer used for
+# relevance matching; see extract_path_references above).
 # ---------------------------------------------------------------------------
 
 def extract_topics_from_doc(content: str) -> set[str]:
@@ -270,46 +463,103 @@ def get_commit_files(commit_hash: str, repo_path: str, docs_path: str) -> list[s
 # Topic matching
 # ---------------------------------------------------------------------------
 
-def find_related_commits(
-    doc_topics: set[str],
-    commits: list[dict],
-) -> list[dict]:
-    """Find commits where changed files or subjects match doc topics.
+def _path_overlaps(referenced: str, changed_file: str) -> bool:
+    """Decide whether a commit-changed file is covered by a doc's reference.
 
-    Checks each commit's file paths and subject line against the topics
-    extracted from the documentation.
+    A "reference" here is a normalized repo-relative path from
+    ``extract_path_references``. It may be either a file path
+    (``core/skill/gateway.py``) or a directory path
+    (``core/skill/``, trailing slash preserved).
+
+    Matching rules:
+
+    1. **Directory reference.** ``changed_file`` is under that directory
+       (prefix match on the trailing-slash form).
+    2. **File reference — exact.** ``changed_file`` equals the reference.
+    3. **File reference — sibling.** ``changed_file`` lives in the same
+       directory as the referenced file. This covers the common case where
+       a doc names one module in a directory but the refactor touched a
+       sibling (``core/skill/gateway.py`` referenced; commit touched
+       ``core/skill/market.py``).
 
     Args:
-        doc_topics: Set of topics extracted from the doc.
-        commits: List of commit dicts (from get_recent_code_commits).
+        referenced: A normalized path from the doc (may end in ``/`` for a
+                    directory; no leading ``./``).
+        changed_file: A repo-relative path from a commit's changed files.
 
     Returns:
-        List of commits that have topic matches, with added "matched_topics" field.
+        True if the reference is a plausible ancestor or sibling of the
+        changed file.
+    """
+    if not referenced or not changed_file:
+        return False
+
+    # Case 1: directory reference.
+    if referenced.endswith("/"):
+        return changed_file.startswith(referenced)
+
+    # Case 2: exact file match.
+    if referenced == changed_file:
+        return True
+
+    # Case 3: sibling match — both live in the same directory.
+    # Example: referenced='core/skill/gateway.py',
+    #          changed_file='core/skill/market.py' → True.
+    ref_dir = referenced.rsplit("/", 1)[0] if "/" in referenced else ""
+    changed_dir = changed_file.rsplit("/", 1)[0] if "/" in changed_file else ""
+
+    # Require a non-empty common directory; otherwise anything in the repo
+    # root would match anything else in the repo root.
+    return bool(ref_dir) and ref_dir == changed_dir
+
+
+def find_related_commits(
+    doc_path_refs: set[str],
+    commits: list[dict],
+) -> list[dict]:
+    """Find commits whose changed files overlap with paths the doc references.
+
+    This is the post-2026-04-13 implementation. See
+    ``docs/design/doc-freshness-relevance-filter.md`` for rationale. The
+    old behaviour (substring matching over every backtick-quoted term and
+    heading, plus unanchored matching against commit subjects) produced too
+    many false positives. The new logic restricts matching to directory-
+    prefix overlap between the doc's explicit path references and the
+    commit's changed files.
+
+    Args:
+        doc_path_refs: Set of normalized, repo-relative paths the doc
+                       references (from ``extract_path_references``).
+        commits: List of commit dicts (from ``get_recent_code_commits``).
+
+    Returns:
+        List of commits that overlap on at least one path, each augmented
+        with a ``matched_topics`` field listing the doc-referenced paths
+        that matched. The field name is retained for output-schema
+        compatibility; the values are now paths, not substrings.
     """
     related = []
 
+    # No path references in the doc means nothing to match against. This is
+    # a deliberate behaviour change: docs with no referenced paths will
+    # always be classified as "fresh" (with the reasoning surfaced in the
+    # recommendation text). If that turns out to miss cases, revisit.
+    if not doc_path_refs:
+        return related
+
     for commit in commits:
-        matched_topics = set()
+        matched_refs: set[str] = set()
 
-        # Check if any commit files match doc topics
-        for filepath in commit.get("files", []):
-            # Check for exact matches and partial matches
-            filepath_lower = filepath.lower()
-            for topic in doc_topics:
-                # Match if topic appears in filepath (e.g., "auth" in "src/auth.py")
-                # or if filepath appears in topics (e.g., "src/auth.py" in doc)
-                if topic in filepath_lower or filepath_lower in topic:
-                    matched_topics.add(topic)
+        for changed_file in commit.get("files", []):
+            for ref in doc_path_refs:
+                if _path_overlaps(ref, changed_file):
+                    matched_refs.add(ref)
 
-        # Check if any topics appear in the commit subject
-        subject_lower = commit["subject"].lower()
-        for topic in doc_topics:
-            if topic in subject_lower:
-                matched_topics.add(topic)
-
-        if matched_topics:
+        if matched_refs:
             commit_with_match = commit.copy()
-            commit_with_match["matched_topics"] = sorted(list(matched_topics))
+            # `matched_topics` is preserved for schema stability; values are
+            # now paths instead of lowercased substrings.
+            commit_with_match["matched_topics"] = sorted(matched_refs)
             related.append(commit_with_match)
 
     return related
@@ -430,12 +680,20 @@ def scan_documentation(
             # If no git history, skip the doc
             continue
 
-        # Read document content and extract topics
+        # Read document content.
         content = md_file.read_text(encoding="utf-8", errors="ignore")
+
+        # Primary signal for matching: explicit path references in the doc
+        # (see docs/design/doc-freshness-relevance-filter.md).
+        path_refs = extract_path_references(content, rel_path)
+
+        # Legacy topic set retained for the `matched_topics` display field
+        # fallback when the doc has no path references but we still want to
+        # surface what it mentions. Not used for matching.
         topics = extract_topics_from_doc(content)
 
-        # Find commits related to this doc's topics
-        related_commits = find_related_commits(topics, recent_commits)
+        # Find commits whose changed files overlap the doc's referenced paths.
+        related_commits = find_related_commits(path_refs, recent_commits)
 
         # Classify freshness
         status, recommendation = classify_freshness(
