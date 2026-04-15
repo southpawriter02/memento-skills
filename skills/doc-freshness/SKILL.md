@@ -11,6 +11,7 @@ The process works in stages:
 
 1. **Determine scope** — Which repository and documentation directory to scan?
 2. **Run the scanner** — Extract topics from markdown docs, cross-reference against Git history to find related code changes
+    - **2a. Weekly-rhythm recommendation** — For a low-friction weekly review, run the scanner with a priority filter and the concise digest format (see below). This is the intended habitual use — much lighter than reading the full JSON every time
 3. **Interpret results** — Analyze the scanner output to understand what changed and why a doc might be stale
 4. **Present findings** — Show a prioritized report highlighting the docs most likely to need updates
 5. **Offer next steps** — Help take action: update the doc, flag an issue, create a task
@@ -38,6 +39,8 @@ The scanner (`scripts/doc_freshness_scanner.py`) performs these steps:
    - **fresh**: No related code changes found, OR doc was updated after all related changes
    - **possibly_stale**: Related code changed, but doc was updated within 30 days of that change
    - **likely_stale**: Related code changed and doc hasn't been updated within 30 days of that change
+
+5. **Importance scoring (v2)** — In addition to freshness, each doc is assigned an `importance_score` in `[0.0, 1.0]` and a coarse `priority` bucket (`low`, `medium`, `high`). The score is a convex combination of two BM25-derived signals: *distinctive content density* (sum of each doc's top-`K` term IDFs, a proxy for "how much unique technical content does this doc carry?") and *inbound reference authority* (count of other docs that link to or mention the doc). Weights default to 60% intrinsic / 40% reference. Priority buckets use tertile-inspired cut-points at `0.33` and `0.66`. See `docs/design/doc-freshness-relevance-v2-bm25-weighting.md` (MS-DES-0009) for the full rationale.
 
 **Deliberate tradeoff:** a doc that mentions no paths at all will always classify as `fresh` with zero related changes. The scanner is input to human judgment, not a gate; false negatives are preferred over false positives because false positives erode trust in the signal.
 
@@ -97,9 +100,22 @@ python scripts/doc_freshness_scanner.py \
 - `--docs-path` — Path to docs directory, relative to repo (default: `docs/`)
 - `--since` — Date filter for code changes (ISO 8601, e.g. `2026-03-13`; default: 30 days ago)
 - `--include-untracked` — Also scan Markdown files that are not yet tracked by Git. When this flag is set, the scanner falls back to the filesystem's last-modified time (`mtime`) for the `last_updated` field of any untracked file, and each document record gains a `tracked` boolean so downstream consumers can tell which source produced the timestamp. Default: off.
+- `--min-priority {low,medium,high}` — Filter the returned doc list to records at or above the given priority (v2). Default: `low` (pass-through). `medium` drops low-priority docs; `high` keeps only high-priority docs. The summary block recomputes against the filtered list so counts stay consistent.
+- `--format {json,priority-digest}` — Output format (v2). Default: `json` (full record schema, unchanged from v1 except for the two new fields per doc). `priority-digest` emits a concise Markdown digest suitable for weekly review — one H2 per non-empty priority bucket and a single-line summary per doc, with no full commit listings.
 - `--output` — Write results to JSON file (default: print to stdout)
 
 **When to use `--include-untracked`.** The default mode reads timestamps from `git log`, which is correct and reproducible but blind to files that haven't been committed yet. On a working branch where you've just added a new doc, the default scan silently skips it. Turn this flag on during drafting to include those files; turn it off for release-time audits where only committed state matters.
+
+**The weekly-rhythm recipe (recommended).** The v2 flags exist to support a low-friction weekly cadence:
+
+```bash
+python scripts/doc_freshness_scanner.py \
+  --since "7 days ago" \
+  --min-priority medium \
+  --format priority-digest
+```
+
+This scans the last week of code changes, filters out low-priority docs (ones with little distinctive content and few inbound references), and prints a short Markdown digest. Read the digest, act on the top two or three, and move on. The idea is to turn "spend an hour reading the full JSON" into "skim a digest for a minute, update one or two docs, done" — and come back next week. See MS-DES-0009 for the design rationale behind this flow.
 
 ## JSON output structure
 
@@ -127,17 +143,29 @@ The scanner outputs JSON with this structure:
         }
       ],
       "matched_topics": ["auth", "config.json"],
-      "recommendation": "Review — related code changed 12 days ago but doc hasn't been updated in 57 days"
+      "recommendation": "Review — related code changed 12 days ago but doc hasn't been updated in 57 days",
+      "importance_score": 0.79,
+      "priority": "high"
     }
   ],
   "summary": {
     "total_docs": 10,
     "fresh": 6,
     "possibly_stale": 2,
-    "likely_stale": 2
+    "likely_stale": 2,
+    "priority_counts": {
+      "high": 2,
+      "medium": 6,
+      "low": 2
+    }
   }
 }
 ```
+
+**v2 additions on each record:**
+
+- `importance_score` — Float in `[0.0, 1.0]`. Continuous score; use it if you want finer-grained ordering than the three-bucket priority.
+- `priority` — One of `"low"`, `"medium"`, `"high"`. Discretized for stable filtering and to avoid false-precision "rank 3 vs rank 4" misreads. See MS-DES-0009.
 
 ## Limitations and considerations
 

@@ -19,8 +19,17 @@ Options:
                             mtime as a fallback (default: off — untracked docs
                             are skipped). Each document record gains a
                             ``tracked`` boolean when this flag is used.
+    --min-priority LEVEL    Filter output to docs at or above this priority
+                            (one of: low, medium, high; default: low = no
+                            filter). Summary counters recompute against the
+                            filtered list. See MS-DES-0009 for rationale.
+    --format FORMAT         Output format (one of: json, priority-digest;
+                            default: json). ``priority-digest`` emits a
+                            concise Markdown digest suitable for weekly
+                            review; ``json`` is the existing machine-
+                            readable output.
 
-Output format:
+Output format (JSON, default):
     {
         "scan_date": "2026-04-13",
         "docs_path": "docs/",
@@ -31,6 +40,8 @@ Output format:
                 "last_updated": "2026-02-15",
                 "days_since_update": 57,
                 "status": "likely_stale",
+                "importance_score": 0.73,
+                "priority": "high",
                 "related_code_changes": [
                     {
                         "hash": "abc1234",
@@ -48,9 +59,16 @@ Output format:
             "total_docs": 10,
             "fresh": 6,
             "possibly_stale": 2,
-            "likely_stale": 2
+            "likely_stale": 2,
+            "priority_counts": {"high": 2, "medium": 3, "low": 5}
         }
     }
+
+The ``importance_score`` and ``priority`` fields are added by MS-DES-0009
+(relevance v2). See ``doc_importance.py`` for the scoring formula; in short,
+a BM25-derived "distinctive content density" signal is combined with an
+inbound-reference-count signal, both max-normalized across the corpus, to
+produce a float in [0.0, 1.0]. Priority is a three-bucket discretization.
 
 Status classification:
     - fresh: Doc updated more recently than any related code change, OR no related
@@ -68,6 +86,21 @@ import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+# Sibling import — doc_importance lives alongside this script and exposes
+# the compute_importance_scores() / classify_priority() entry points.
+# Keep import relative to this file's directory so the script works whether
+# invoked as ``python doc_freshness_scanner.py`` from its own dir or as
+# ``python skills/doc-freshness/scripts/doc_freshness_scanner.py`` from the
+# repo root. See MS-DES-0009 "Why a ported BM25 module" for why we import
+# a sibling rather than core/skill/retrieval/local_bm25_recall.py.
+_THIS_DIR = Path(__file__).resolve().parent
+if str(_THIS_DIR) not in sys.path:
+    sys.path.insert(0, str(_THIS_DIR))
+from doc_importance import (  # noqa: E402  (after sys.path mutation)
+    classify_priority,
+    compute_importance_scores,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -661,6 +694,7 @@ def scan_documentation(
     docs_path: str = "docs/",
     since: str = None,
     include_untracked: bool = False,
+    min_priority: str = "low",
 ) -> dict:
     """Scan documentation directory and cross-reference against Git history.
 
@@ -677,9 +711,18 @@ def scan_documentation(
                            consumers can tell the two cases apart. When
                            False (default), untracked docs are skipped
                            silently — the original behaviour.
+        min_priority: Filter the returned ``documents`` list to records at or
+                      above this priority. One of ``"low"``, ``"medium"``,
+                      ``"high"``. Default ``"low"`` passes everything
+                      through (no filter). See MS-DES-0009 AC #5 / #6.
+                      Summary counters recompute against the filtered list
+                      so downstream consumers see consistent numbers.
 
     Returns:
         Dictionary matching the output format described in module docstring.
+        Every document record gains ``importance_score`` (float in [0, 1])
+        and ``priority`` (one of low/medium/high) per MS-DES-0009. The
+        summary block gains ``priority_counts`` with the same three keys.
     """
     repo_path = Path(repo_path).resolve()
     docs_dir = repo_path / docs_path
@@ -696,6 +739,18 @@ def scan_documentation(
     else:
         md_files = sorted(docs_dir.rglob("*.md"))
 
+    # -----------------------------------------------------------------------
+    # MS-DES-0009: compute per-doc importance scores once, up front.
+    # -----------------------------------------------------------------------
+    # We score every .md file found on disk, not just those with Git history,
+    # so an untracked-but-included doc gets a valid score. The scores dict
+    # is keyed by POSIX-style path relative to the docs-tree root (not the
+    # repo root); we translate at lookup time below.
+    #
+    # For a corpus with zero docs, compute_importance_scores returns an
+    # empty dict and every lookup falls back to 0.0 / "low" — no error path.
+    importance_scores = compute_importance_scores(docs_dir, md_files)
+
     # Get recent code commits (once, for all docs)
     recent_commits = get_recent_code_commits(
         str(repo_path),
@@ -706,6 +761,9 @@ def scan_documentation(
     # Analyze each document
     documents = []
     status_counts = {"fresh": 0, "possibly_stale": 0, "likely_stale": 0}
+    # MS-DES-0009: parallel counter keyed by priority bucket, computed
+    # against the *post-filter* document list to match status_counts.
+    priority_counts = {"high": 0, "medium": 0, "low": 0}
 
     for md_file in md_files:
         # Get path relative to repo root
@@ -752,23 +810,63 @@ def scan_documentation(
         doc_date = datetime.fromisoformat(last_updated).date()
         days_since_update = (datetime.now(timezone.utc).date() - doc_date).days
 
+        # MS-DES-0009: look up the doc's importance score. The importance
+        # dict is keyed by path relative to docs_dir; our md_file is
+        # absolute, so we translate once here. A missing key (shouldn't
+        # happen — compute_importance_scores processes every md_file we
+        # passed in) falls back to 0.0 / "low" for a belt-and-suspenders
+        # safety net.
+        try:
+            importance_key = md_file.resolve().relative_to(docs_dir.resolve()).as_posix()
+        except ValueError:
+            importance_key = None
+        importance_score = (
+            importance_scores.get(importance_key, 0.0)
+            if importance_key is not None
+            else 0.0
+        )
+        priority = classify_priority(importance_score)
+
         # Build document record. The ``tracked`` flag tells downstream
         # consumers (the pipeline orchestrator, the feedback log, etc.)
         # whether ``last_updated`` came from Git history (authoritative)
-        # or filesystem mtime (best-effort).
+        # or filesystem mtime (best-effort). ``importance_score`` and
+        # ``priority`` are the MS-DES-0009 additions.
         doc_record = {
             "path": str(rel_path),
             "last_updated": last_updated,
             "days_since_update": days_since_update,
             "tracked": tracked,
             "status": status,
+            "importance_score": round(importance_score, 4),
+            "priority": priority,
             "related_code_changes": related_commits,
             "matched_topics": sorted(list(topics))[:10],  # Top 10 topics
             "recommendation": recommendation,
         }
 
         documents.append(doc_record)
-        status_counts[status] += 1
+
+    # -----------------------------------------------------------------------
+    # MS-DES-0009: apply --min-priority filter post-hoc, then recompute all
+    # summary counters against the filtered list so downstream consumers
+    # never have to reconcile two different doc counts.
+    # -----------------------------------------------------------------------
+    # The ordinal ordering of the priority buckets is low < medium < high.
+    # "low" passes everything through (default); "medium" keeps medium+high;
+    # "high" keeps high only.
+    _PRIORITY_ORDINAL = {"low": 0, "medium": 1, "high": 2}
+    threshold = _PRIORITY_ORDINAL.get(min_priority, 0)
+    if threshold > 0:
+        documents = [
+            d for d in documents
+            if _PRIORITY_ORDINAL.get(d["priority"], 0) >= threshold
+        ]
+
+    # Recompute counters on the (possibly filtered) final document list.
+    for d in documents:
+        status_counts[d["status"]] += 1
+        priority_counts[d["priority"]] += 1
 
     return {
         "scan_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
@@ -780,8 +878,96 @@ def scan_documentation(
             "fresh": status_counts["fresh"],
             "possibly_stale": status_counts["possibly_stale"],
             "likely_stale": status_counts["likely_stale"],
+            "priority_counts": priority_counts,
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# Output formatters (MS-DES-0009)
+# ---------------------------------------------------------------------------
+
+
+def format_priority_digest(scan_result: dict) -> str:
+    """Emit a concise Markdown digest suitable for weekly review.
+
+    The digest groups documents by priority bucket (high → medium → low),
+    omits empty buckets, and shows a single line per doc with path, status,
+    days-since-update, and a short reason. Full commit lists and full
+    recommendation prose are omitted — JSON mode is still the right format
+    for deep investigation.
+
+    Args:
+        scan_result: The dict returned by ``scan_documentation``.
+
+    Returns:
+        A Markdown string, newline-terminated.
+    """
+    lines: list[str] = []
+    summary = scan_result.get("summary", {})
+    priority_counts = summary.get("priority_counts", {"high": 0, "medium": 0, "low": 0})
+
+    # Header with the scan's date range for context.
+    lines.append(f"# Doc-freshness priority digest — {scan_result.get('scan_date', 'unknown')}")
+    lines.append("")
+    lines.append(
+        f"Scanned since **{scan_result.get('since', 'unknown')}** — "
+        f"{summary.get('total_docs', 0)} docs "
+        f"(fresh: {summary.get('fresh', 0)}, "
+        f"possibly stale: {summary.get('possibly_stale', 0)}, "
+        f"likely stale: {summary.get('likely_stale', 0)})"
+    )
+    lines.append("")
+    lines.append(
+        f"Priority mix — high: {priority_counts.get('high', 0)}, "
+        f"medium: {priority_counts.get('medium', 0)}, "
+        f"low: {priority_counts.get('low', 0)}"
+    )
+
+    # Group docs by priority bucket. Iterate in fixed high → medium → low
+    # order so the digest's reading order is stable regardless of how the
+    # source dict is ordered.
+    docs = scan_result.get("documents", [])
+    buckets: dict[str, list[dict]] = {"high": [], "medium": [], "low": []}
+    for d in docs:
+        buckets.setdefault(d.get("priority", "low"), []).append(d)
+
+    bucket_labels = {
+        "high": "High priority",
+        "medium": "Medium priority",
+        "low": "Low priority",
+    }
+    for bucket in ("high", "medium", "low"):
+        items = buckets.get(bucket, [])
+        if not items:
+            continue
+        lines.append("")
+        lines.append(f"## {bucket_labels[bucket]}")
+        lines.append("")
+        # Sort by status severity (likely_stale first) then by days-since.
+        _status_ordinal = {"likely_stale": 0, "possibly_stale": 1, "fresh": 2}
+        items = sorted(
+            items,
+            key=lambda d: (
+                _status_ordinal.get(d.get("status", "fresh"), 3),
+                -d.get("days_since_update", 0),
+            ),
+        )
+        for d in items:
+            path = d.get("path", "(unknown)")
+            status = d.get("status", "fresh")
+            days = d.get("days_since_update", 0)
+            score = d.get("importance_score", 0.0)
+            # One-liner per doc. Use a compact reason clause; the full
+            # recommendation is still available in the JSON output.
+            lines.append(
+                f"- `{path}` — **{status}**, "
+                f"updated {days}d ago, "
+                f"importance {score:.2f}"
+            )
+
+    lines.append("")  # trailing newline
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -821,6 +1007,28 @@ def main():
             "branches; less reliable than Git history."
         ),
     )
+    # MS-DES-0009: new CLI surface for the weekly-habit use case.
+    parser.add_argument(
+        "--min-priority",
+        choices=["low", "medium", "high"],
+        default="low",
+        help=(
+            "Filter output to docs at or above this priority bucket. "
+            "'low' (default) = no filter; 'medium' keeps medium+high; "
+            "'high' keeps high only. Summary counters recompute against "
+            "the filtered list. See MS-DES-0009 for scoring details."
+        ),
+    )
+    parser.add_argument(
+        "--format",
+        choices=["json", "priority-digest"],
+        default="json",
+        help=(
+            "Output format. 'json' (default) is the existing machine-"
+            "readable output. 'priority-digest' emits a concise Markdown "
+            "digest suitable for weekly review."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -829,9 +1037,16 @@ def main():
         docs_path=args.docs_path,
         since=args.since,
         include_untracked=args.include_untracked,
+        min_priority=args.min_priority,
     )
 
-    output = json.dumps(result, indent=2, ensure_ascii=False)
+    # Dispatch on --format. The JSON branch is byte-for-byte what every
+    # prior consumer expects (modulo the new fields specified in AC #4 and
+    # #8 of MS-DES-0009, which are purely additive).
+    if args.format == "priority-digest":
+        output = format_priority_digest(result)
+    else:
+        output = json.dumps(result, indent=2, ensure_ascii=False)
 
     if args.output:
         Path(args.output).write_text(output, encoding="utf-8")
