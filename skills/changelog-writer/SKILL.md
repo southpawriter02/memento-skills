@@ -52,8 +52,11 @@ python <skill-directory>/scripts/git_log_parser.py \
   [--to-tag <tag>] \
   [--since <date>] \
   [--until <date>] \
-  [--path-filter <path>]
+  [--path-filter <path>] \
+  [--filter-scope <scope> [--filter-scope <scope> ...]]
 ```
+
+The `--filter-scope` flag is repeatable and narrows the output to commits whose conventional-commit scope matches (case-insensitive, exact match). Use it when the user asks for "changes to auth" or "what changed in the api module". OR-semantics apply: `--filter-scope auth --filter-scope api` returns commits in either scope.
 
 The script outputs JSON with full commit details including conventional commit parsing. Read the output — it's your raw material.
 
@@ -96,6 +99,30 @@ Map each commit to a Keep a Changelog category. Use this decision logic:
 - "security," "vulnerability," "CVE" → **Security**
 
 **Commits to omit:** Skip merge commits, version bumps that only change a version number, and purely internal changes (CI config, linter config, test-only changes) unless the user specifically asks for a complete log.
+
+### Step 3a — Scope-based grouping (optional)
+
+If the commits carry conventional-commit scopes, the parser's summary block exposes a `scopes_used` field — a sorted list of unique scope strings across the returned commits. Use it when the changelog would benefit from per-module sub-headings instead of a flat list under each category.
+
+When to reach for this grouping:
+
+- The release touches many modules and a flat `### Added` list would hide structure.
+- The user asked for a changelog "organized by area" or "by component".
+- You spot 3+ distinct scopes in `scopes_used` and at least two of them have multiple commits.
+
+How to apply it, within each Keep a Changelog category:
+
+```markdown
+### Added
+
+- **auth** — new JWT refresh flow and rotating session tokens (abc1234, def5678)
+- **api** — pagination metadata on list endpoints (ghi9012)
+- **retrieval** — hybrid BM25 + dense-vector reranker (jkl3456)
+```
+
+The scope stays inside the bullet (as a bolded prefix) rather than becoming an H4 sub-heading — that keeps the changelog readable as a flat list while still surfacing module boundaries. If the user explicitly asks for sub-headings instead, use `#### auth` style H4s under each category.
+
+If the user wants a changelog scoped to one module only, pass `--filter-scope <scope>` to the parser and skip the per-scope sub-grouping — the entire output is already that one scope.
 
 ### Step 4 — Write the changelog entry
 

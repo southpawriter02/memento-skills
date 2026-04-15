@@ -1,4 +1,4 @@
-# Technical Writing Style Guide
+# Technical writing style guide
 
 > **Version:** 1.0.0
 > **Last Updated:** 2026-04-13
@@ -12,7 +12,7 @@ This is the reference style guide for the `style-checker` skill. Each section be
 
 ---
 
-## Table of Contents
+## Table of contents
 
 1. [Voice and Tone](#1-voice-and-tone)
 2. [Sentence and Paragraph Structure](#2-sentence-and-paragraph-structure)
@@ -26,9 +26,9 @@ This is the reference style guide for the `style-checker` skill. Each section be
 
 ---
 
-## 1. Voice and Tone
+## 1. Voice and tone
 
-### Rule 1.1 — Use second person (WARNING)
+### Rule 1.1 — use second person (WARNING)
 
 Address the reader as "you." Avoid "we," "one," or "the user" when referring to the person reading the doc.
 
@@ -38,7 +38,7 @@ Address the reader as "you." Avoid "we," "one," or "the user" when referring to 
 
 **Exception:** "We" is acceptable when it genuinely means the team or organization ("We release updates on Tuesdays").
 
-### Rule 1.2 — Use active voice (WARNING)
+### Rule 1.2 — use active voice (WARNING)
 
 Prefer active voice over passive voice. Passive voice obscures who or what performs the action.
 
@@ -47,7 +47,7 @@ Prefer active voice over passive voice. Passive voice obscures who or what perfo
 
 **Exception:** Passive voice is acceptable when the actor is genuinely unknown or irrelevant ("The file was created during installation").
 
-### Rule 1.3 — Use imperative mood for procedures (ERROR)
+### Rule 1.3 — use imperative mood for procedures (ERROR)
 
 In step-by-step instructions, use imperative mood (direct commands). Don't describe what the reader should do — tell them.
 
@@ -55,38 +55,38 @@ In step-by-step instructions, use imperative mood (direct commands). Don't descr
 **Bad:** "You should open the terminal and run `npm install`."
 **Bad:** "The next step is to open the terminal and run `npm install`."
 
-### Rule 1.4 — Keep tone professional but approachable (INFO)
+### Rule 1.4 — keep tone professional but approachable (INFO)
 
 Avoid being overly formal ("henceforth," "aforementioned," "it should be noted that") or overly casual (slang, jokes that don't land in translation, exclamation marks in technical content).
 
 ---
 
-## 2. Sentence and Paragraph Structure
+## 2. Sentence and paragraph structure
 
-### Rule 2.1 — Keep sentences under 30 words (WARNING)
+### Rule 2.1 — keep sentences under 30 words (WARNING)
 
 Sentences longer than 30 words are harder to parse, especially for non-native English readers and screen readers. Split long sentences into two.
 
-### Rule 2.2 — One idea per sentence (INFO)
+### Rule 2.2 — one idea per sentence (INFO)
 
 Don't pack multiple concepts into a single sentence joined by semicolons or "and." Each sentence should convey one thought.
 
-### Rule 2.3 — Lead with the important information (WARNING)
+### Rule 2.3 — lead with the important information (WARNING)
 
 Put the key takeaway at the beginning of the sentence or paragraph, not at the end.
 
 **Good:** "Restart the service after changing the config. Changes don't take effect until the next restart."
 **Bad:** "Because the configuration is only read at startup time, and changes to it are not dynamically detected by the running process, you need to restart the service."
 
-### Rule 2.4 — Keep paragraphs to 3-5 sentences (INFO)
+### Rule 2.4 — keep paragraphs to 3-5 sentences (INFO)
 
 Long paragraphs are walls of text. If a paragraph exceeds 5 sentences, consider splitting it or converting part of it to a list.
 
 ---
 
-## 3. Headings and Document Structure
+## 3. Headings and document structure
 
-### Rule 3.1 — Use sentence case for headings (ERROR)
+### Rule 3.1 — use sentence case for headings (ERROR)
 
 Capitalize only the first word and proper nouns. Don't use title case.
 
@@ -100,26 +100,26 @@ Capitalize only the first word and proper nouns. Don't use title case.
 
 **Proper nouns.** The canonical list of preserved spellings lives in the `PROPER_NOUNS` dict in `skills/style-checker/scripts/style_autofix.py`. That dict is the authoritative source — extend it in the same PR that introduces a new proper noun into prose. Examples include `OpenClaw`, `SQLite`, `PostgreSQL`, `GitHub`, `iOS`. Tokens wrapped in backticks (inline code) are always passed through verbatim, which is the escape hatch for multi-word proper nouns like `` `Claude Code` `` until a longest-match allowlist lands.
 
-### Rule 3.2 — Don't skip heading levels (ERROR)
+### Rule 3.2 — don't skip heading levels (ERROR)
 
 Heading levels must be sequential. Don't jump from `##` to `####` without a `###` in between.
 
-### Rule 3.3 — Start with an H1, use only one H1 per document (ERROR)
+### Rule 3.3 — start with an H1, use only one H1 per document (ERROR)
 
 Every document should begin with a single `#` heading. All subsequent headings should be `##` or deeper.
 
-### Rule 3.4 — Use task-oriented headings (WARNING)
+### Rule 3.4 — use task-oriented headings (WARNING)
 
 Headings should describe what the reader will accomplish, not internal system structure.
 
 **Good:** `## Set up authentication`
 **Bad:** `## AuthModule`
 
-### Rule 3.5 — Don't leave empty sections (ERROR)
+### Rule 3.5 — don't leave empty sections (ERROR)
 
 If a heading has no content below it (or only "TBD" / "TODO"), either fill it in or remove it. Empty sections signal unfinished work.
 
-### Rule 3.6 — No trailing colons on headings (WARNING)
+### Rule 3.6 — no trailing colons on headings (WARNING)
 
 Headings should not end with a colon. A colon implies "a list or explanation follows immediately," but Markdown heading syntax already establishes that relationship — the colon is redundant visual noise and hurts scannability. It also causes trouble for auto-generated anchors and tables of contents, which typically strip or URL-encode punctuation and produce inconsistent slugs.
 
@@ -134,9 +134,9 @@ Headings should not end with a colon. A colon implies "a list or explanation fol
 
 ---
 
-## 4. Code and Technical Elements
+## 4. Code and technical elements
 
-### Rule 4.1 — Use code fences with language tags (ERROR)
+### Rule 4.1 — use code fences with language tags (ERROR)
 
 All code blocks must use triple-backtick fences with a language identifier.
 
@@ -154,40 +154,40 @@ All code blocks must use triple-backtick fences with a language identifier.
 ```
 ````
 
-### Rule 4.2 — Use inline code for technical names (WARNING)
+### Rule 4.2 — use inline code for technical names (WARNING)
 
 File paths, function names, variable names, command names, config keys, and error messages should be in inline code backticks.
 
 **Good:** "Edit the `timeout` field in `config.json`."
 **Bad:** "Edit the timeout field in config.json."
 
-### Rule 4.3 — Code examples must be runnable (ERROR)
+### Rule 4.3 — code examples must be runnable (ERROR)
 
 Every code example should work as-is if copied and pasted. Don't use pseudo-code or placeholders like `<your-api-key>` without explicitly noting that the reader needs to substitute a value.
 
-### Rule 4.4 — Show expected output for commands (WARNING)
+### Rule 4.4 — show expected output for commands (WARNING)
 
 When showing a command to run, include the expected output (or at least describe what the reader should see).
 
-### Rule 4.5 — Don't hardcode version numbers in prose (WARNING)
+### Rule 4.5 — don't hardcode version numbers in prose (WARNING)
 
 Reference version numbers through variables, links, or a single "current version" statement at the top of the doc. Hardcoded versions go stale.
 
 ---
 
-## 5. Terminology and Word Choice
+## 5. Terminology and word choice
 
-### Rule 5.1 — Use consistent terminology (ERROR)
+### Rule 5.1 — use consistent terminology (ERROR)
 
 Pick one term for each concept and stick with it throughout the document (and ideally across all docs). Don't alternate between synonyms.
 
 **Example:** If you call it an "endpoint," don't switch to "route" or "API path" later.
 
-### Rule 5.2 — Define jargon on first use (WARNING)
+### Rule 5.2 — define jargon on first use (WARNING)
 
 The first time a technical term appears, either define it inline or link to a glossary entry.
 
-### Rule 5.3 — Avoid Latin abbreviations (INFO)
+### Rule 5.3 — avoid Latin abbreviations (INFO)
 
 Use English equivalents instead of Latin abbreviations.
 
@@ -201,7 +201,7 @@ Use English equivalents instead of Latin abbreviations.
 
 **Exception:** "e.g." and "i.e." are acceptable in parenthetical asides if the audience is highly technical.
 
-### Rule 5.4 — Avoid filler phrases (INFO)
+### Rule 5.4 — avoid filler phrases (INFO)
 
 Cut phrases that add length but not meaning.
 
@@ -217,7 +217,7 @@ Cut phrases that add length but not meaning.
 | Utilize | Use |
 | Functionality | Feature, capability |
 
-### Rule 5.5 — Use American English spelling (INFO)
+### Rule 5.5 — use American English spelling (INFO)
 
 Use "color" not "colour," "customize" not "customise," "canceled" not "cancelled."
 
@@ -225,44 +225,44 @@ Use "color" not "colour," "customize" not "customise," "canceled" not "cancelled
 
 ---
 
-## 6. Formatting and Markdown Conventions
+## 6. Formatting and Markdown conventions
 
-### Rule 6.1 — Use blank lines before lists (ERROR)
+### Rule 6.1 — use blank lines before lists (ERROR)
 
 A list must be preceded by a blank line, per CommonMark spec. Without it, some renderers won't parse the list correctly.
 
-### Rule 6.2 — Use numbered lists for sequential steps, bullets for non-sequential items (WARNING)
+### Rule 6.2 — use numbered lists for sequential steps, bullets for non-sequential items (WARNING)
 
 If order matters (procedures, workflows), use numbered lists. If order doesn't matter (features, options, examples), use bullet points.
 
-### Rule 6.3 — Bold for UI elements and key terms, italic for emphasis (INFO)
+### Rule 6.3 — bold for UI elements and key terms, italic for emphasis (INFO)
 
 Use **bold** for UI labels, button names, and key terms on first introduction. Use *italic* for gentle emphasis. Don't use both on the same word.
 
-### Rule 6.4 — Use tables for structured data with 3+ attributes (INFO)
+### Rule 6.4 — use tables for structured data with 3+ attributes (INFO)
 
 If you're describing items that each have multiple properties (name, type, default, description), a table is almost always clearer than a list.
 
-### Rule 6.5 — One trailing newline at end of file (INFO)
+### Rule 6.5 — one trailing newline at end of file (INFO)
 
 Files should end with exactly one newline character. No trailing blank lines, no missing final newline.
 
 ---
 
-## 7. Links and Cross-References
+## 7. Links and cross-references
 
-### Rule 7.1 — Use descriptive link text (ERROR)
+### Rule 7.1 — use descriptive link text (ERROR)
 
 Never use "click here" or "this page" as link text. The link text should describe the destination.
 
 **Good:** "See the [authentication guide](./auth.md) for setup instructions."
 **Bad:** "For setup instructions, click [here](./auth.md)."
 
-### Rule 7.2 — Use relative paths for internal links (WARNING)
+### Rule 7.2 — use relative paths for internal links (WARNING)
 
 Link to other docs in the same repo with relative paths, not absolute URLs. This keeps links working across environments (local, staging, production).
 
-### Rule 7.3 — Check for broken links (ERROR)
+### Rule 7.3 — check for broken links (ERROR)
 
 All links (internal and external) must resolve. Broken links are one of the fastest ways to erode trust in documentation.
 
@@ -270,7 +270,7 @@ All links (internal and external) must resolve. Broken links are one of the fast
 
 ## 8. Accessibility
 
-### Rule 8.1 — Provide alt text for all images (ERROR)
+### Rule 8.1 — provide alt text for all images (ERROR)
 
 Every image must have descriptive alt text that conveys the image's purpose, not just its content.
 
@@ -278,17 +278,17 @@ Every image must have descriptive alt text that conveys the image's purpose, not
 **Bad:** `![diagram](./images/request-flow.png)`
 **Bad:** `![](./images/request-flow.png)`
 
-### Rule 8.2 — Don't rely on color alone to convey meaning (WARNING)
+### Rule 8.2 — don't rely on color alone to convey meaning (WARNING)
 
 If a diagram uses red/green to indicate error/success, also use labels, icons, or patterns.
 
-### Rule 8.3 — Use descriptive table headers (INFO)
+### Rule 8.3 — use descriptive table headers (INFO)
 
 Table headers should clearly label what's in each column. Avoid single-letter or abbreviated headers.
 
 ---
 
-## 9. Project-Specific Rules
+## 9. Project-specific rules
 
 This section covers rules that apply to specific file formats or project conventions rather than to prose in general.
 

@@ -312,15 +312,37 @@ def _compute_per_skill(skill: str, runs: list[dict]) -> PerSkillMetrics:
             round(mean(fixes_per_run), 2) if fixes_per_run else 0.0
         )
         metrics.extras["max_errors_in_one_run"] = max(fixes_per_run, default=0)
-        # Warnings-remaining: most recent non-zero value (last-observed is the
-        # current backlog size). This tracks the 22-finding README backlog.
-        last_remaining = 0
-        for run in reversed(runs):
-            remaining = int(run.get("style_warnings_remaining", 0) or 0)
-            if remaining > 0:
-                last_remaining = remaining
-                break
-        metrics.extras["current_warnings_backlog"] = last_remaining
+        # Warnings-remaining: the most recently reported backlog size from a
+        # run where style-checker was actually attributed. This needs to
+        # include explicit zeros — a run that cleared the backlog should
+        # bring the headline down to 0, not fall back to the last pre-sweep
+        # non-zero value.
+        #
+        # This is a fix for the quirk documented in
+        # ``docs/analysis/pipeline-log-baseline-2026-04-14-readme-swept.md``
+        # §"Why the 'backlog: 22' headline line does not reflect reality":
+        # the original implementation walked ``reversed(runs)`` and broke
+        # on the first ``style_warnings_remaining > 0``, which made
+        # explicit-zero cleared-the-backlog runs invisible. The fix walks
+        # ``attributed_runs`` (only style-checker-attributed runs, not the
+        # whole log) in reverse and takes the value from the most recent
+        # one, zero or not. If no run has ever been attributed (fresh log),
+        # the backlog is trivially zero.
+        #
+        # Note that ``style_warnings_remaining`` is treated as "missing-or-
+        # zero equals zero" — the field was nullable in early runs before
+        # the schema settled, and a missing field in an attributed run
+        # means the same thing as ``0`` (no outstanding warnings recorded
+        # for that run). Runs that deliberately want to communicate
+        # "backlog unchanged from the previous run" should echo the prior
+        # value rather than omitting the field.
+        if attributed_runs:
+            last_attributed = attributed_runs[-1]
+            metrics.extras["current_warnings_backlog"] = int(
+                last_attributed.get("style_warnings_remaining", 0) or 0
+            )
+        else:
+            metrics.extras["current_warnings_backlog"] = 0
 
     elif skill == "doc-freshness":
         totals: Counter[str] = Counter()

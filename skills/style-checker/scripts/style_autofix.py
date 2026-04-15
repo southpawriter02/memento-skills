@@ -172,6 +172,26 @@ PROPER_NOUNS: dict[str, str] = {
     "nfkc": "NFKC",
     "rrf": "RRF",
     "bm25": "BM25",
+    # HTML heading-level tags. These get surfaced in the style guide
+    # itself ("Start with an H1, use only one H1 per document") and any
+    # reference doc that talks about heading structure. The ``_is_acronym``
+    # helper only matches pure-alpha all-caps runs, so ``H1``...``H6`` need
+    # an explicit entry to survive sentence-case lowercasing.
+    "h1": "H1",
+    "h2": "H2",
+    "h3": "H3",
+    "h4": "H4",
+    "h5": "H5",
+    "h6": "H6",
+    # Language / locale adjectives that double as proper nouns. The style
+    # guide's own rule prose mentions "Latin abbreviations" (Rule 5.3) and
+    # "American English spelling" (Rule 5.5), both of which should stay
+    # capitalized in sentence-case headings.
+    "latin": "Latin",
+    "american": "American",
+    "english": "English",
+    "british": "British",
+    "unicode": "Unicode",
     # Context-specific (Finder column-view docs reference a bare
     # ``Column`` as a proper noun for the UI element).
     "column": "Column",

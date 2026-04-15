@@ -14,6 +14,12 @@ Options:
     --from-tag TAG          Start range at this tag (exclusive)
     --to-tag TAG            End range at this tag (inclusive, default: HEAD)
     --path-filter PATH      Only include commits touching files under this path
+    --filter-scope SCOPE    Only include commits whose conventional-commit scope matches
+                            (case-insensitive, exact match). Repeatable for OR-semantics:
+                            --filter-scope auth --filter-scope api returns commits in
+                            either scope. Summary counters recompute against the filtered
+                            list. See docs/design/changelog-writer-scope-extraction.md
+                            (MS-DES-0008) for rationale.
     --output PATH           Write JSON to this file (default: stdout)
 
 Output format:
@@ -45,9 +51,14 @@ Output format:
         "summary": {
             "total_commits": 15,
             "authors": ["Name1", "Name2"],
-            "date_range": { "earliest": "2026-03-01", "latest": "2026-04-13" }
+            "date_range": { "earliest": "2026-03-01", "latest": "2026-04-13" },
+            "scopes_used": ["api", "auth"]
         }
     }
+
+The "scopes_used" field is a sorted list of unique non-null, non-empty
+conventional-commit scope strings across all returned commits. It is always
+present; if no commit has a scope it is an empty list.
 
 The "conventional" field is populated by parsing conventional commit prefixes
 (feat, fix, docs, refactor, chore, test, style, perf, ci, build, revert).
@@ -182,6 +193,7 @@ def parse_git_log(
     from_tag: str | None = None,
     to_tag: str | None = None,
     path_filter: str | None = None,
+    filter_scopes: list[str] | None = None,
 ) -> dict:
     """Parse git log into a structured dictionary.
 
@@ -192,9 +204,15 @@ def parse_git_log(
         from_tag: Start of tag range (exclusive).
         to_tag: End of tag range (inclusive). Defaults to HEAD.
         path_filter: Only include commits touching this path.
+        filter_scopes: If set, include only commits whose ``conventional.scope``
+            matches (case-insensitive, exact match) any of the listed scopes.
+            OR-semantics across the list. An empty list is treated the same as
+            ``None`` (no filter). Implements MS-DES-0008 AC #6.
 
     Returns:
         A dictionary matching the output format described in the module docstring.
+        The ``summary`` block always contains ``scopes_used`` — a sorted list of
+        unique non-null, non-empty scope strings across the (post-filter) commits.
     """
     # Build the git log command
     log_args = ["log", f"--format={LOG_FORMAT}"]
@@ -261,10 +279,46 @@ def parse_git_log(
             "conventional": conventional,
         })
 
+    # -----------------------------------------------------------------------
+    # Apply --filter-scope (MS-DES-0008 AC #6 & #7)
+    # -----------------------------------------------------------------------
+    # The filter is applied *after* commits are built so the same parser pass
+    # powers both filtered and unfiltered output. We normalize the filter
+    # values to lowercase once, then do case-insensitive exact-match comparison
+    # against each commit's conventional.scope. Commits whose scope is None
+    # (unscoped feat/fix, or an uncategorized subject) never match — they're
+    # dropped when a filter is active.
+    #
+    # An empty filter list is treated as "no filter" so callers can pass
+    # ``filter_scopes=[]`` without it silently zeroing their results.
+    if filter_scopes:
+        needles = {s.lower() for s in filter_scopes}
+        commits = [
+            c for c in commits
+            if c["conventional"]["scope"] is not None
+            and c["conventional"]["scope"].lower() in needles
+        ]
+
+    # -----------------------------------------------------------------------
     # Build summary
+    # -----------------------------------------------------------------------
+    # All summary counters are computed against the *post-filter* commit list
+    # so downstream consumers never have to reconcile two different commit
+    # counts. If a filter eliminated every commit, authors/dates fall out to
+    # empty/None naturally — the caller sees a consistent empty-result shape.
     authors = sorted(set(c["author"].split(" <")[0] for c in commits))
     dates = [c["date"] for c in commits]
     repo_name = Path(repo_path).name
+
+    # Aggregate unique conventional-commit scopes. Per MS-DES-0008 AC #5 this
+    # field is always present (never missing), always a sorted list, and skips
+    # any commit whose scope is None or an empty string. We use a set to
+    # deduplicate and sort at the end for stable JSON output.
+    scopes_used = sorted({
+        c["conventional"]["scope"]
+        for c in commits
+        if c["conventional"]["scope"]  # truthy — skips None and ""
+    })
 
     return {
         "repository": repo_name,
@@ -281,6 +335,7 @@ def parse_git_log(
                 "earliest": min(dates) if dates else None,
                 "latest": max(dates) if dates else None,
             },
+            "scopes_used": scopes_used,
         },
     }
 
@@ -305,6 +360,19 @@ def main():
     parser.add_argument("--from-tag", help="Start range at this tag (exclusive)")
     parser.add_argument("--to-tag", help="End range at this tag (inclusive, default: HEAD)")
     parser.add_argument("--path-filter", help="Only commits touching this path")
+    # --filter-scope is repeatable: argparse's action="append" gives us
+    # a list of all values the user passed (or None if they passed none).
+    # See MS-DES-0008 for the rationale on OR-semantics + exact-match.
+    parser.add_argument(
+        "--filter-scope",
+        action="append",
+        dest="filter_scopes",
+        metavar="SCOPE",
+        help=(
+            "Only include commits whose conventional-commit scope matches "
+            "(case-insensitive, exact match). Repeatable for OR-semantics."
+        ),
+    )
     parser.add_argument("--output", help="Write JSON to file (default: stdout)")
 
     args = parser.parse_args()
@@ -316,6 +384,7 @@ def main():
         from_tag=args.from_tag,
         to_tag=args.to_tag,
         path_filter=args.path_filter,
+        filter_scopes=args.filter_scopes,
     )
 
     output = json.dumps(result, indent=2, ensure_ascii=False)

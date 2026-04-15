@@ -197,6 +197,52 @@ def test_rule_3_1_canonicalizes_framework_proper_nouns() -> None:
         assert expected in result.new_content, (src, result.new_content)
 
 
+def test_rule_3_1_preserves_language_and_locale_proper_nouns() -> None:
+    """``Latin``, ``American``, ``English``, etc. survive sentence-case.
+
+    Surfaced while style-cleaning the style guide itself: Rule 5.3's
+    heading (``Avoid Latin abbreviations``) and Rule 5.5's heading (``Use
+    American English spelling``) were getting mangled. Neither ``latin``
+    nor ``american`` is a tech acronym, but both are proper nouns as
+    language / locale names.
+    """
+
+    cases = [
+        ("## Avoid Latin abbreviations\n", "## Avoid Latin abbreviations"),
+        ("## Use American English spelling\n",
+         "## Use American English spelling"),
+        ("## Prefer British over Continental\n",
+         "## Prefer British over continental"),
+        ("## Unicode NFKC normalization\n",
+         "## Unicode NFKC normalization"),
+    ]
+    for src, expected in cases:
+        result = _run(src, rules={"3.1"})
+        assert expected in result.new_content, (src, result.new_content)
+
+
+def test_rule_3_1_preserves_html_heading_level_tags() -> None:
+    """``H1``...``H6`` are HTML heading-tag acronyms and must survive.
+
+    Surfaced while style-cleaning the style guide itself on 2026-04-14:
+    the heading ``### Rule 3.3 — Start with an H1, use only one H1 per
+    document`` was getting mangled to ``### ...start with an h1, use only
+    one h1 per document``. The ``_is_acronym`` helper only matches
+    pure-alpha all-caps runs and skips ``H1`` because of the digit, so an
+    explicit ``PROPER_NOUNS`` entry is needed. This test locks in the fix.
+    """
+
+    cases = [
+        ("### Start with an H1\n", "### Start with an H1"),
+        ("### Use H2 for subsections\n", "### Use H2 for subsections"),
+        ("### Skipping from H2 to H4 is an error\n",
+         "### Skipping from H2 to H4 is an error"),
+    ]
+    for src, expected in cases:
+        result = _run(src, rules={"3.1"})
+        assert expected in result.new_content, (src, result.new_content)
+
+
 def test_rule_3_1_sentence_boundary_period_flips_case() -> None:
     """AC #3 (MS-DES-0007): a `.` inside a heading starts a new sentence.
 

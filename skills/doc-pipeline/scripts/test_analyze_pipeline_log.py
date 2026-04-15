@@ -285,6 +285,65 @@ class TestMetricArithmetic(unittest.TestCase):
         self.assertEqual(sc.extras["max_errors_in_one_run"], 2)
         self.assertEqual(sc.extras["current_warnings_backlog"], 22)
 
+    def test_backlog_accessor_respects_explicit_zero(self) -> None:
+        """Regression: a later attributed run explicitly clearing the
+        backlog (``style_warnings_remaining=0``) must bring the headline
+        down to zero, not fall back to an earlier non-zero value.
+
+        This test locks in the fix for the quirk documented in
+        ``docs/analysis/pipeline-log-baseline-2026-04-14-readme-swept.md``
+        §"Why the 'backlog: 22' headline line does not reflect reality".
+        Before the fix, the accessor walked the whole log and broke on
+        the first non-zero value, which meant run #1's ``22`` shadowed
+        run #N's ``0``. After the fix, the accessor walks only runs
+        attributed to style-checker and takes the value from the most
+        recent one, zero or not.
+        """
+
+        runs_with_sweep = self.runs + [
+            _run(
+                run_id=4,
+                date="2026-04-14",
+                scope="Rule 3.1 README sweep",
+                notes="Cleared the 22-finding README backlog in one pass.",
+                style_errors_fixed=22,
+                style_warnings_remaining=0,
+            )
+        ]
+        per_skill, _ = apl.analyze(runs_with_sweep)
+        sc = per_skill["style-checker"]
+        self.assertEqual(sc.runs_invoked, [1, 4])
+        self.assertEqual(
+            sc.extras["current_warnings_backlog"],
+            0,
+            msg=(
+                "Run #4 explicitly reported style_warnings_remaining=0, "
+                "so the headline backlog must be 0 — not 22 (the pre-sweep "
+                "value from run #1)."
+            ),
+        )
+
+    def test_backlog_accessor_no_style_checker_ever_attributed(self) -> None:
+        """Edge case: a log where style-checker has never been attributed
+        should report a backlog of zero (not raise, not leak data)."""
+
+        # A run with no style-checker signal anywhere — the notes
+        # deliberately avoid the attribution needles (no mention of
+        # "style", the autofix script, or any Rule N.N reference).
+        runs_no_sc = [
+            _run(
+                run_id=1,
+                date="2026-03-31",
+                scope="plain status update",
+                notes="Freshness scan, nothing else noteworthy.",
+                files_modified=["docs/status.md"],
+            )
+        ]
+        per_skill, _ = apl.analyze(runs_no_sc)
+        sc = per_skill["style-checker"]
+        self.assertEqual(sc.runs_invoked, [])
+        self.assertEqual(sc.extras["current_warnings_backlog"], 0)
+
     def test_changelog_writer_metrics(self) -> None:
         per_skill, _ = apl.analyze(self.runs)
         cw = per_skill["changelog-writer"]
