@@ -447,6 +447,34 @@ def _is_technical_identifier(core: str) -> bool:
 # itself contains a period are **not** sentence terminators.
 _SENTENCE_TERMINATORS: frozenset[str] = frozenset({".", "!", "?"})
 
+# MS-DES-0012 — abbreviation cores whose terminal period is a mark of
+# abbreviation, not a sentence boundary. Stored lowercase; lookup in
+# ``_ends_sentence`` lowercases the incoming core before comparing, so
+# capitalization variants (``Vs.``, ``VS.``, ``Etc.``) all match.
+#
+# Four entries ship with MS-DES-0012 — the four explicitly called out
+# in the Phase 3 interim retrospective's "follow-ups" section as the
+# bug this allowlist closes. Widening follows the ``PROPER_NOUNS``
+# discipline: when a real heading surfaces a missing abbreviation, add
+# the entry plus a regression unit test. Preemptive population is
+# deliberately avoided — common short forms like ``no.`` or ``min.``
+# collide with ordinary English words and would invite false
+# suppression of real sentence boundaries. See MS-DES-0012
+# "Path forward" for the candidate list.
+#
+# Note on ``e.g`` / ``i.e``: ``_strip_surrounding`` stops stripping as
+# soon as it hits an alnum character, so a token ``e.g.`` becomes
+# ``("", "e.g", ".")`` — the core retains the internal period. Those
+# two cores are therefore stored with the dot intact in this set.
+_ABBREVIATION_NON_TERMINATORS: frozenset[str] = frozenset(
+    {
+        "vs",   # "versus"          — e.g., ``## Lists vs. tables``
+        "etc",  # "et cetera"       — e.g., ``## Build tools, etc. in CI``
+        "e.g",  # "for example"     — core retains internal period
+        "i.e",  # "that is"         — core retains internal period
+    }
+)
+
 
 def _ends_sentence(core: str, trailing: str) -> bool:
     """True if a token's trailing punctuation flips the "next token is
@@ -463,17 +491,26 @@ def _ends_sentence(core: str, trailing: str) -> bool:
     -------
     bool
         ``True`` only when ``trailing`` is exactly one of ``.``, ``!``,
-        or ``?`` *and* ``core`` itself is not a technical identifier
-        (so ``v0.3.0.`` at sentence end still flips the state, but a
-        bare token whose trailing slice is multi-character — ``...`` —
-        does not).
+        or ``?`` *and* ``core`` is not a recognized abbreviation (so
+        ``v0.3.0.`` at sentence end still flips the state, but a bare
+        token whose trailing slice is multi-character — ``...`` — does
+        not, and a token whose core appears in
+        ``_ABBREVIATION_NON_TERMINATORS`` does not flip either).
     """
 
     # Multi-character trailing (``...``, ``?!``) is not a single
     # terminator — treat as mid-sentence punctuation for safety.
     if len(trailing) != 1:
         return False
-    return trailing in _SENTENCE_TERMINATORS
+    if trailing not in _SENTENCE_TERMINATORS:
+        return False
+    # MS-DES-0012: abbreviation cores suppress the flip even though
+    # their trailing ``.`` would otherwise count as a terminator. The
+    # lookup is case-insensitive so ``Vs.`` / ``VS.`` / ``vs.`` are
+    # treated identically, mirroring the ``PROPER_NOUNS`` convention.
+    if core.lower() in _ABBREVIATION_NON_TERMINATORS:
+        return False
+    return True
 
 
 def _transform_hyphenated_core(core: str, is_first_word: bool) -> str:

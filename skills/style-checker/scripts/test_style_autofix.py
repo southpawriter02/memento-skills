@@ -326,6 +326,140 @@ def test_rule_3_1_version_literal_is_not_a_sentence_terminator() -> None:
     ), result.new_content
 
 
+# -----------------------------------------------------------------------
+# MS-DES-0012 — abbreviation non-terminator allowlist.
+#
+# These tests guard the four abbreviations shipped with MS-DES-0012
+# (``vs``, ``etc``, ``e.g``, ``i.e``) against the Phase 3 interim
+# retrospective's documented failure mode: ``_ends_sentence`` was
+# flipping ``at_sentence_start`` on abbreviation terminal periods, which
+# caused the *next* token to be incorrectly first-word-capitalized.
+# -----------------------------------------------------------------------
+
+
+def test_rule_3_1_vs_abbreviation_does_not_flip_sentence_start() -> None:
+    """AC #1 (MS-DES-0012): ``vs.`` does not flip ``at_sentence_start``.
+
+    Before MS-DES-0012 the heading ``## Lists vs. Tables in Markdown``
+    was producing ``## Lists vs. Tables in Markdown`` (no change on
+    ``Tables`` because the trailing ``.`` of ``vs.`` flipped the state
+    and ``Tables`` was retreated as a first word). The correct output
+    lowercases ``Tables`` because ``vs.`` is mid-sentence.
+    """
+
+    result = _run("## Lists vs. Tables in Markdown\n", rules={"3.1"})
+    assert (
+        "## Lists vs. tables in Markdown" in result.new_content
+    ), result.new_content
+
+
+def test_rule_3_1_etc_abbreviation_does_not_flip_sentence_start() -> None:
+    """AC #2 (MS-DES-0012): ``etc.`` does not flip sentence start."""
+
+    # ``Dependencies`` starts the heading (correctly capitalized by the
+    # first-word rule). After ``etc.`` the following word must stay
+    # lowercased because ``etc.`` is an abbreviation, not a terminator.
+    result = _run(
+        "## Dependencies, Build Tools, etc. Used in CI\n", rules={"3.1"}
+    )
+    assert (
+        "## Dependencies, build tools, etc. used in CI" in result.new_content
+    ), result.new_content
+
+
+def test_rule_3_1_eg_abbreviation_does_not_flip_sentence_start() -> None:
+    """AC #3 (MS-DES-0012): ``e.g.`` does not flip sentence start.
+
+    Exercises the ``_is_technical_identifier`` interaction: ``e.g.`` has
+    an internal period, so the token-transform path passes it through
+    untouched. The MS-DES-0012 fix lives in ``_ends_sentence`` and
+    must still suppress the state flip even when the token-transform
+    path short-circuits.
+    """
+
+    result = _run(
+        "## Common Short Forms, e.g. and i.e. Clarified\n", rules={"3.1"}
+    )
+    # Note: ``i.e.`` is handled by the next test; here we just need
+    # ``Clarified`` to stay lowercase despite the ``.`` after ``i.e``.
+    assert (
+        "## Common short forms, e.g. and i.e. clarified" in result.new_content
+    ), result.new_content
+
+
+def test_rule_3_1_ie_abbreviation_does_not_flip_sentence_start() -> None:
+    """AC #4 (MS-DES-0012): ``i.e.`` does not flip sentence start."""
+
+    result = _run("## Clarify i.e. Examples Here\n", rules={"3.1"})
+    assert (
+        "## Clarify i.e. examples here" in result.new_content
+    ), result.new_content
+
+
+def test_rule_3_1_abbreviation_lookup_is_case_insensitive() -> None:
+    """AC #5 (MS-DES-0012): ``Vs.`` / ``VS.`` / ``Etc.`` all suppress flip.
+
+    The allowlist stores lowercase cores; ``_ends_sentence`` lowercases
+    the incoming core before comparing. All capitalization variants must
+    be treated identically *for the state-flip decision*. What the
+    sentence-case transform does with the core itself is governed by
+    separate rules (the all-caps-acronym rule preserves ``VS`` as-is,
+    for example); MS-DES-0012 only owns the ``at_sentence_start`` flip.
+    The key invariant across all cases below is that the *next* token
+    must be lowercased (``Bar`` → ``bar``, ``Onwards`` → ``onwards``).
+    """
+
+    cases = [
+        # ``Vs`` — not all-caps, so the sentence-case rule lowercases
+        # the core itself as well as suppressing the state flip.
+        ("## Foo Vs. Bar in Markdown\n", "## Foo vs. bar in Markdown"),
+        # ``VS`` — all-caps, length ≥ 2 → treated as an acronym by the
+        # existing ``_is_acronym`` rule and preserved verbatim. The
+        # MS-DES-0012 fix still fires because the state-flip lookup is
+        # case-insensitive: the next word ``Bar`` must still be
+        # lowercased to ``bar``.
+        ("## Foo VS. Bar in Markdown\n", "## Foo VS. bar in Markdown"),
+        # ``Etc`` — not all-caps, lowercased to ``etc``; state flip
+        # suppressed so ``Onwards`` becomes ``onwards``.
+        ("## Alpha, Beta, Etc. Onwards\n", "## Alpha, beta, etc. onwards"),
+    ]
+    for src, expected in cases:
+        result = _run(src, rules={"3.1"})
+        assert expected in result.new_content, (src, result.new_content)
+
+
+def test_rule_3_1_real_terminator_after_abbreviation_still_flips() -> None:
+    """AC #6 (MS-DES-0012): a real ``.`` after an abbreviation still flips.
+
+    Regression guard against an over-eager fix: ``## Lists vs. tables.
+    Next section.`` must still capitalize ``Next`` because the ``.``
+    after ``tables`` is a real sentence boundary. The MS-DES-0012 fix
+    only suppresses the flip on the abbreviation itself, not on
+    subsequent real terminators.
+    """
+
+    src = "## Lists vs. Tables. Next Section.\n"
+    result = _run(src, rules={"3.1"})
+    assert (
+        "## Lists vs. tables. Next section." in result.new_content
+    ), result.new_content
+
+
+def test_rule_3_1_abbreviation_allowlist_entries_are_lowercase() -> None:
+    """Tripwire: every MS-DES-0012 allowlist entry must be lowercase.
+
+    ``_ends_sentence`` does a case-insensitive lookup by lowercasing the
+    incoming core. If an allowlist entry is accidentally stored with an
+    uppercase letter, the lookup becomes a no-op and the bug the entry
+    was added to fix silently returns. Catch it at import time.
+    """
+
+    for entry in sa._ABBREVIATION_NON_TERMINATORS:
+        assert entry == entry.lower(), (
+            f"_ABBREVIATION_NON_TERMINATORS entry {entry!r} must be lowercase"
+        )
+
+
 def test_rule_3_1_proper_nouns_registry_has_no_lowercase_values() -> None:
     """Tripwire: every canonical spelling must differ from its lowercase key.
 
