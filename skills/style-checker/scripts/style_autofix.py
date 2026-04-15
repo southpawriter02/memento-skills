@@ -195,6 +195,11 @@ PROPER_NOUNS: dict[str, str] = {
     # Context-specific (Finder column-view docs reference a bare
     # ``Column`` as a proper noun for the UI element).
     "column": "Column",
+    # Skill Market is a named system referenced throughout MS-DES-0004,
+    # MS-DES-0010, and the retrieval-layer codebase (e.g., the Skill
+    # Market's ``/api/v1/search`` endpoint). A bare ``Market`` stays
+    # capitalized in sentence-case headings that discuss it.
+    "market": "Market",
 }
 
 # -----------------------------------------------------------------------------

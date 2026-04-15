@@ -243,6 +243,28 @@ def test_rule_3_1_preserves_html_heading_level_tags() -> None:
         assert expected in result.new_content, (src, result.new_content)
 
 
+def test_rule_3_1_preserves_market_as_proper_noun() -> None:
+    """``Market`` is a proper noun for the Skill Market system.
+
+    Surfaced while drafting MS-DES-0010 (remote BM25 fusion): headings like
+    ``### Alternative E — wait indefinitely for the Market owner`` were
+    getting lowercased to ``... market owner``. Throughout MS-DES-0004,
+    MS-DES-0010, and the retrieval-layer codebase, ``Market`` (capitalized)
+    refers to the Skill Market service — the same way ``Cowork`` or
+    ``Claude`` would. The autofixer now preserves it. This test locks in
+    the fix.
+    """
+
+    cases = [
+        ("### Wait for the Market owner\n", "### Wait for the Market owner"),
+        ("## Talking to the Market\n", "## Talking to the Market"),
+        ("### Market-side schema changes\n", "### Market-side schema changes"),
+    ]
+    for src, expected in cases:
+        result = _run(src, rules={"3.1"})
+        assert expected in result.new_content, (src, result.new_content)
+
+
 def test_rule_3_1_sentence_boundary_period_flips_case() -> None:
     """AC #3 (MS-DES-0007): a `.` inside a heading starts a new sentence.
 
