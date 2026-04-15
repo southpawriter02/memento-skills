@@ -89,7 +89,7 @@ Four design specs landed during this release (MS-DES-0001 through MS-DES-0004) c
 
 > **v0.2.0** is a major architectural upgrade. The core agent, skill system, configuration layer, and deployment surfaces have all been redesigned or significantly extended compared to v0.1.0.
 
-### Core Architecture
+### Core architecture
 
 | Change | Description |
 | --- | --- |
@@ -101,7 +101,7 @@ Four design specs landed during this release (MS-DES-0001 through MS-DES-0004) c
 | **Execution policies** | New policy modules (`tool_gate`, `path_validator`, `pre_execute`, `recovery`) add fine-grained safety and execution control. |
 | **Error recovery and loop detection** | New `error_recovery.py` and `loop_detector.py` modules handle agent self-repair and infinite loop prevention during skill execution. |
 
-### Configuration System v2
+### Configuration system v2
 
 | Change | Description |
 | --- | --- |
@@ -109,7 +109,7 @@ Four design specs landed during this release (MS-DES-0001 through MS-DES-0004) c
 | **Automatic migration** | When the config template updates, the system auto-merges new fields while preserving user-modified values via `x-managed-by: user` markers. |
 | **Schema validation** | Pydantic-based config models with JSON Schema for IDE auto-completion and validation. |
 
-### Skill Ecosystem
+### Skill ecosystem
 
 | Change | Description |
 | --- | --- |
@@ -120,7 +120,7 @@ Four design specs landed during this release (MS-DES-0001 through MS-DES-0004) c
 | **Pluggable storage** | Skill store now supports `db_storage`, `file_storage`, and `vector_storage` backends. |
 | **Content analyser** | New `content_analyzer.py` for inspecting and validating skill outputs. |
 
-### IM Platform Integration (New)
+### IM platform integration (new)
 
 | Platform | Mode | Notes |
 | --- | --- | --- |
@@ -131,19 +131,19 @@ Four design specs landed during this release (MS-DES-0001 through MS-DES-0004) c
 
 A unified IM Gateway (`middleware/im/gateway/`) with `AgentWorker`, `ConnectionManager`, and platform-specific channels enables real-time message handling across all four platforms.
 
-### New Built-in Skill
+### New built-in skill
 
 | Skill | Description |
 | --- | --- |
 | `im-platform` | IM platform operations — send messages, manage contacts, and handle events across Feishu, DingTalk, WeCom, and WeChat from within agent workflows. |
 
-### GUI Enhancements
+### GUI enhancements
 
 - **Workspace browser** — integrated file tree with drag-and-drop and in-place file operations.
 - **Session management** — save, load, rename, and delete conversation history.
 - **Slash commands** — `/skills`, `/context`, `/compress`, `/feishu start|stop|status`, and more.
 
-### Developer Experience
+### Developer experience
 
 | Addition | Description |
 | --- | --- |
@@ -163,7 +163,7 @@ A unified IM Gateway (`middleware/im/gateway/`) with `AgentWorker`, `ConnectionM
 
 ---
 
-## Learning Results
+## Learning results
 
 We evaluate Memento-Skills on two challenging benchmarks:
 
@@ -203,7 +203,7 @@ Local execution, persistent state, CLI, GUI, and multi-platform IM integration m
 </tr>
 </table>
 
-## Key Features
+## Key features
 
 | Feature | Why it matters |
 | --- | --- |
@@ -216,13 +216,13 @@ Local execution, persistent state, CLI, GUI, and multi-platform IM integration m
 | **Configuration v2** | Three-layer isolation (System / User / Runtime) with automatic migration, schema validation, and version management. |
 | **Local-first deployment surfaces** | CLI, desktop GUI, IM bridges, local sandbox execution, and persistent state make it practical for real-world deployment rather than one-off demos. |
 
-## What Is Memento-Skills?
+## What is Memento-Skills?
 
 Memento-Skills is a **fully self-developed agent framework** organised around `skills` as first-class units of capability. Skills are retrievable, executable, persistent, and evolvable. Instead of treating tools as a flat pile of functions, Memento-Skills treats them as a growing library that can be routed, evaluated, repaired, and rewritten over time.
 
 What makes it interesting is not just whether the agent can call tools. It is what happens **after failure**. Memento-Skills tries to identify which skill failed, reflect on why it failed, improve or regenerate that skill, and write the improved capability back into the skill library.
 
-## What Makes It Different?
+## What makes it different?
 
 Memento-Skills is built around a continual `Read -> Execute -> Reflect -> Write` loop.
 
@@ -242,7 +242,7 @@ The two systems share a lot of DNA, but they are not centred on the same questio
 - OpenClaw is more about getting an assistant to run in the real world.
 - Memento-Skills is more about getting an agent to learn from the real world.
 
-### Shared Foundation
+### Shared foundation
 
 | Common Ground | Memento-Skills | OpenClaw |
 | --- | --- | --- |
@@ -251,7 +251,7 @@ The two systems share a lot of DNA, but they are not centred on the same questio
 | Tool use and local execution | Yes | Yes |
 | Persistent or stateful memory | Yes | Yes |
 
-### Key Differences
+### Key differences
 
 | Dimension | Memento-Skills | OpenClaw |
 | --- | --- | --- |
@@ -265,7 +265,7 @@ The two systems share a lot of DNA, but they are not centred on the same questio
 
 In one sentence: **OpenClaw is about getting the assistant running; Memento-Skills is about getting the agent learning.**
 
-## Deployment Surfaces
+## Deployment surfaces
 
 <p align="center">
   <img src="Figures/figure3.png" width="92%" alt="Memento-Skills GUI">
@@ -282,13 +282,13 @@ In one sentence: **OpenClaw is about getting the assistant running; Memento-Skil
 | **Skill verification** | `memento verify` | Download, static review, and execution validation |
 | **Local sandbox** | `uv` | Isolated skill execution, dependency install, and local tool invocation |
 
-## One Repo. One Learning Agent.
+## One repo. One learning agent.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate && pip install -e . && memento doctor && memento agent
 ```
 
-## One-Click GUI Install
+## One-click GUI install
 
 Download the pre-built desktop app — no Python or terminal needed. Just unzip and run.
 
@@ -299,7 +299,7 @@ Download the pre-built desktop app — no Python or terminal needed. Just unzip 
 
 > After unzipping, open the app and fill in your LLM API key in the settings page. That's it — you're ready to go.
 
-## Quick Start (Developer)
+## Quick start (developer)
 
 ```bash
 git clone https://github.com/Memento-Teams/Memento-Skills.git
@@ -392,7 +392,7 @@ memento-gui               # Desktop GUI
 
 </details>
 
-## Built-in Skills
+## Built-in skills
 
 The built-in skills are the starting point, not the end state. The goal is not to freeze the system at ten hand-written skills, but to maintain a skill library that can keep growing, keep being retrieved, and keep being repaired.
 
@@ -409,7 +409,7 @@ The built-in skills are the starting point, not the end state. The goal is not t
 | `uv-pip-install` | Python dependency installation via `uv` |
 | `im-platform` | IM platform integration — Feishu, DingTalk, WeCom, and WeChat **(new in v0.2.0)** |
 
-## Developer Notes
+## Developer notes
 
 <details>
 <summary><b>Project structure</b></summary>
@@ -494,7 +494,7 @@ Memento-Skills/
 | IM gateway connection fails | Check the IM platform credentials in `config.json`. |
 | Config migration fails | Back up then manually merge `~/memento_s/config.json` with the template. |
 
-## Memento Ecosystem
+## Memento ecosystem
 
 Memento-Skills is part of the broader **Memento** project family. Visit the links below to learn more about the full ecosystem and connect with the community.
 
@@ -521,7 +521,7 @@ If you find Memento-Skills useful in your research, please cite:
 }
 ```
 
-## Chinese Summary
+## Chinese summary
 
 <details>
 <summary><b>点击展开中文摘要</b></summary>

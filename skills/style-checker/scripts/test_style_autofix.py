@@ -143,6 +143,144 @@ def test_rule_3_1_no_change_already_sentence_case() -> None:
 
 
 # -----------------------------------------------------------------------------
+# Rule 3.1 — MS-DES-0007 hardening (proper-noun widening + sentence
+# boundaries). These tests enforce the new behaviors documented in
+# docs/design/rule-3-1-proper-nouns-and-sentence-boundaries.md.
+# -----------------------------------------------------------------------------
+
+
+def test_rule_3_1_preserves_openclaw_proper_noun() -> None:
+    """AC #2 (MS-DES-0007): ``OpenClaw`` is preserved verbatim.
+
+    This is the specific gap that triggered the spec — before the
+    widening, the heading ``## Memento-Skills vs OpenClaw`` was being
+    mangled to ``## Memento-Skills vs openclaw``.
+    """
+
+    src = "## Memento-Skills vs OpenClaw\n"
+    result = _run(src, rules={"3.1"})
+    assert "## Memento-Skills vs OpenClaw" in result.new_content, result.new_content
+    assert result.findings == [], result.findings
+
+
+def test_rule_3_1_canonicalizes_database_proper_nouns() -> None:
+    """SQLite / PostgreSQL / MySQL all round-trip to canonical casing."""
+
+    cases = [
+        ("## Storing data in Sqlite\n", "## Storing data in SQLite"),
+        ("## Using Postgresql for prod\n", "## Using PostgreSQL for prod"),
+        ("## Migrating from Mysql\n", "## Migrating from MySQL"),
+    ]
+    for src, expected in cases:
+        result = _run(src, rules={"3.1"})
+        assert expected in result.new_content, (src, result.new_content)
+
+
+def test_rule_3_1_canonicalizes_ios_and_github() -> None:
+    """``iOS`` and ``GitHub`` have vendor-mandated internal capitalization."""
+
+    result = _run("## Running on Ios via Github\n", rules={"3.1"})
+    assert "## Running on iOS via GitHub" in result.new_content, result.new_content
+
+
+def test_rule_3_1_canonicalizes_framework_proper_nouns() -> None:
+    """Flet / Briefcase / Pydantic / SQLAlchemy all round-trip."""
+
+    cases = [
+        ("## Packaging with Flet\n", "## Packaging with Flet"),
+        ("## Shipping with Briefcase\n", "## Shipping with Briefcase"),
+        ("## Modeling with Pydantic\n", "## Modeling with Pydantic"),
+        ("## ORM via Sqlalchemy\n", "## ORM via SQLAlchemy"),
+    ]
+    for src, expected in cases:
+        result = _run(src, rules={"3.1"})
+        assert expected in result.new_content, (src, result.new_content)
+
+
+def test_rule_3_1_sentence_boundary_period_flips_case() -> None:
+    """AC #3 (MS-DES-0007): a `.` inside a heading starts a new sentence.
+
+    The heading ``## One Repo. One Learning Agent.`` becomes
+    ``## One repo. One learning agent.`` — the second ``One`` must stay
+    capitalized, because a period terminated the previous sentence.
+    """
+
+    result = _run("## One Repo. One Learning Agent.\n", rules={"3.1"})
+    assert (
+        "## One repo. One learning agent." in result.new_content
+    ), result.new_content
+
+
+def test_rule_3_1_sentence_boundary_question_mark_flips_case() -> None:
+    """A `?` also starts a new sentence."""
+
+    result = _run("## Does It Work? Yes. Absolutely.\n", rules={"3.1"})
+    assert (
+        "## Does it work? Yes. Absolutely." in result.new_content
+    ), result.new_content
+
+
+def test_rule_3_1_sentence_boundary_exclamation_flips_case() -> None:
+    """An `!` also starts a new sentence."""
+
+    result = _run("## Hello World! Goodbye World!\n", rules={"3.1"})
+    assert (
+        "## Hello world! Goodbye world!" in result.new_content
+    ), result.new_content
+
+
+def test_rule_3_1_ellipsis_is_not_a_sentence_terminator() -> None:
+    """AC #5 (MS-DES-0007): ``...`` does NOT flip the sentence-start state.
+
+    ``## Wait... really?`` becomes ``## Wait... really?`` — ``really``
+    stays lowercase because the ellipsis is multi-character punctuation,
+    not a terminator.
+    """
+
+    src = "## Wait... really?\n"
+    result = _run(src, rules={"3.1"})
+    assert result.new_content == src, result.new_content
+
+
+def test_rule_3_1_version_literal_is_not_a_sentence_terminator() -> None:
+    """AC #6 (MS-DES-0007): the trailing period on ``v0.3.0`` doesn't flip.
+
+    The token ``v0.3.0`` is a technical identifier. The existing
+    technical-identifier passthrough short-circuits re-casing it. When
+    the period at the end is followed by a space and a new sentence,
+    the real sentence boundary is the `.` after ``released`` — not the
+    period inside the version.
+    """
+
+    result = _run("## v0.3.0 released. More coming\n", rules={"3.1"})
+    assert (
+        "## v0.3.0 released. More coming" in result.new_content
+    ), result.new_content
+
+
+def test_rule_3_1_proper_nouns_registry_has_no_lowercase_values() -> None:
+    """Tripwire: every canonical spelling must differ from its lowercase key.
+
+    If someone accidentally adds an entry like ``"python": "python"``,
+    the lookup becomes a no-op. Catch that at import time.
+    """
+
+    for key, value in sa.PROPER_NOUNS.items():
+        assert key == key.lower(), f"PROPER_NOUNS key {key!r} must be lowercase"
+        # Vendor spellings like ``iOS`` deliberately start lowercase;
+        # requiring a different spelling (rather than a different
+        # capitalization on the first character) is the right check.
+        assert value != key, f"PROPER_NOUNS entry {key!r} is a no-op (value equals key)"
+
+
+def test_rule_3_1_proper_nouns_includes_openclaw() -> None:
+    """MS-DES-0007 §Proposed solution committed to fixing this specific gap."""
+
+    assert "openclaw" in sa.PROPER_NOUNS
+    assert sa.PROPER_NOUNS["openclaw"] == "OpenClaw"
+
+
+# -----------------------------------------------------------------------------
 # Rule 3.2 — Heading levels
 # -----------------------------------------------------------------------------
 

@@ -91,39 +91,90 @@ LINK_RE = re.compile(r"(?<!\!)\[(?P<text>[^\]\n]+)\]\((?P<url>[^)\n]+)\)")
 
 # Proper nouns preserved with their canonical casing. Lookup is
 # case-insensitive; the canonical spelling wins.
+#
+# The allowlist is a flat ``dict[str, str]`` — a deliberate choice (see
+# MS-DES-0007 §Alternatives A). Adding a new entry is a one-line edit
+# under PR review, which is the right governance surface for a
+# terminology decision at this repo's size. If the list crosses ~200
+# entries or starts varying by consumer, consider a config file.
+#
+# Canonical spellings follow each vendor's own usage:
+# ``GitHub`` (not ``Github``), ``PostgreSQL`` (not ``Postgresql``),
+# ``SQLAlchemy`` (not ``SQLalchemy``), ``iOS`` (not ``IOS``). The
+# ``OpenClaw`` entry was the specific gap that triggered MS-DES-0007
+# (README heading ``## Memento-Skills vs OpenClaw`` was being mangled
+# to lowercase). Remaining additions came from a ``--check --json``
+# sweep of README.md, docs/, and skills/ that surfaced every token the
+# old auto-fixer mis-cased.
 PROPER_NOUNS: dict[str, str] = {
+    # Project / vendor names.
     "memento-skills": "Memento-Skills",
     "claude": "Claude",
     "anthropic": "Anthropic",
+    "cowork": "Cowork",
+    "openclaw": "OpenClaw",
+    # Languages + runtimes.
     "python": "Python",
     "javascript": "JavaScript",
     "typescript": "TypeScript",
+    "node.js": "Node.js",
+    # Markup / doc formats.
     "markdown": "Markdown",
     "mdx": "MDX",
-    "git": "Git",
-    "github": "GitHub",
-    "gitlab": "GitLab",
-    "docker": "Docker",
-    "linux": "Linux",
-    "macos": "macOS",
-    "windows": "Windows",
-    "cowork": "Cowork",
-    "node.js": "Node.js",
-    "react": "React",
-    "vue": "Vue",
-    "angular": "Angular",
-    "finder": "Finder",
-    "column": "Column",  # For the Finder column-view context
-    "docusaurus": "Docusaurus",
-    "nextra": "Nextra",
-    "astro": "Astro",
     "jsx": "JSX",
     "yaml": "YAML",
     "json": "JSON",
     "csv": "CSV",
     "html": "HTML",
     "css": "CSS",
+    # Tooling + platforms.
+    "git": "Git",
+    "github": "GitHub",
+    "gitlab": "GitLab",
+    "docker": "Docker",
+    "linux": "Linux",
+    "macos": "macOS",
+    "ios": "iOS",
+    "windows": "Windows",
+    "finder": "Finder",
+    # Databases.
+    "sqlite": "SQLite",
+    "postgresql": "PostgreSQL",
+    "mysql": "MySQL",
+    # Frameworks.
+    "react": "React",
+    "vue": "Vue",
+    "angular": "Angular",
+    "docusaurus": "Docusaurus",
+    "nextra": "Nextra",
+    "astro": "Astro",
+    "flet": "Flet",
+    "briefcase": "Briefcase",
+    "pydantic": "Pydantic",
+    "sqlalchemy": "SQLAlchemy",
+    # Acronyms the auto-fixer could already handle via all-caps
+    # detection, but listing them here means a heading that mixes case
+    # (``Api``, ``Cli``) still round-trips to the canonical form.
+    "api": "API",
+    "cli": "CLI",
+    "sdk": "SDK",
+    "ui": "UI",
+    "ide": "IDE",
+    "gui": "GUI",
+    "oss": "OSS",
+    "bsd": "BSD",
+    "mit": "MIT",
+    "tls": "TLS",
+    "http": "HTTP",
+    "https": "HTTPS",
+    "url": "URL",
+    "ast": "AST",
+    "nfkc": "NFKC",
+    "rrf": "RRF",
     "bm25": "BM25",
+    # Context-specific (Finder column-view docs reference a bare
+    # ``Column`` as a proper noun for the UI element).
+    "column": "Column",
 }
 
 # -----------------------------------------------------------------------------
@@ -360,6 +411,46 @@ def _is_technical_identifier(core: str) -> bool:
     return any(c in core for c in "./")
 
 
+# MS-DES-0007 §Proposed solution — sentence-boundary detection.
+#
+# A heading can hold more than one sentence (``## One Repo. One
+# Learning Agent.``). When the previous token's trailing punctuation is
+# a single terminal mark (``.``, ``!``, ``?``), the next non-marker
+# token should receive first-word treatment (leading cap) instead of
+# being lowercased. Ellipses (``...``), multi-character runs of
+# terminals (``!?``), and version literals / file paths whose core
+# itself contains a period are **not** sentence terminators.
+_SENTENCE_TERMINATORS: frozenset[str] = frozenset({".", "!", "?"})
+
+
+def _ends_sentence(core: str, trailing: str) -> bool:
+    """True if a token's trailing punctuation flips the "next token is
+    the start of a new sentence" state.
+
+    Parameters
+    ----------
+    core
+        The token with leading and trailing punctuation stripped.
+    trailing
+        The run of punctuation characters stripped off the right side.
+
+    Returns
+    -------
+    bool
+        ``True`` only when ``trailing`` is exactly one of ``.``, ``!``,
+        or ``?`` *and* ``core`` itself is not a technical identifier
+        (so ``v0.3.0.`` at sentence end still flips the state, but a
+        bare token whose trailing slice is multi-character — ``...`` —
+        does not).
+    """
+
+    # Multi-character trailing (``...``, ``?!``) is not a single
+    # terminator — treat as mid-sentence punctuation for safety.
+    if len(trailing) != 1:
+        return False
+    return trailing in _SENTENCE_TERMINATORS
+
+
 def _transform_hyphenated_core(core: str, is_first_word: bool) -> str:
     """Apply sentence-case rules to a single (possibly hyphenated) token.
 
@@ -405,14 +496,27 @@ def _sentence_case_heading(text: str) -> str:
     ``PROPER_NOUNS``), all-caps acronyms, technical identifiers (file
     paths, dotted names), or single-letter markers.
 
+    Multi-sentence headings are handled: the first word after a
+    terminal-punctuation token (``.``, ``!``, ``?``) is also
+    capitalized, so ``## One Repo. One Learning Agent.`` becomes
+    ``## One repo. One learning agent.`` rather than losing the second
+    ``One``. See MS-DES-0007 for the rationale and the specific
+    non-terminator carve-outs (version literals, ellipses).
+
     Tokens wrapped in backticks (inline code) are preserved verbatim.
     Numeric list markers (``1.``, ``2)``, ``1.1``) are treated as markers,
     not as words, so the token after them still receives "first word"
     treatment.
     """
+
     tokens = text.split(" ")
     out: list[str] = []
-    first_word_seen = False
+    # ``at_sentence_start`` tracks whether the next content token should
+    # be treated as a sentence-initial word. It starts True and flips
+    # back to True whenever a terminal-punctuation token ends a
+    # sentence. This replaces the simpler ``first_word_seen`` flag so
+    # multi-sentence headings capitalize every sentence's leading word.
+    at_sentence_start = True
     for tok in tokens:
         if _is_numeric_marker(tok):
             out.append(tok)
@@ -420,10 +524,12 @@ def _sentence_case_heading(text: str) -> str:
         if not tok:
             out.append(tok)
             continue
-        # Preserve inline code verbatim.
+        # Preserve inline code verbatim. Inline-code tokens count as
+        # "content" so the next word is not treated as sentence-initial,
+        # but they neither start nor end a sentence themselves.
         if tok.startswith("`") and tok.endswith("`"):
             out.append(tok)
-            first_word_seen = True
+            at_sentence_start = False
             continue
         leading, core, trailing = _strip_surrounding(tok)
         if not core:
@@ -439,9 +545,13 @@ def _sentence_case_heading(text: str) -> str:
             new_core = core
         else:
             new_core = _transform_hyphenated_core(
-                core, is_first_word=not first_word_seen
+                core, is_first_word=at_sentence_start
             )
-        first_word_seen = True
+        # After processing this token, update the sentence-boundary
+        # state for the next iteration. Terminal punctuation (``.``,
+        # ``!``, ``?``) immediately after a content word opens a new
+        # sentence; anything else leaves us mid-sentence.
+        at_sentence_start = _ends_sentence(core, trailing)
         out.append(f"{leading}{new_core}{trailing}")
     return " ".join(out)
 

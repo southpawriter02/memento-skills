@@ -93,6 +93,13 @@ Capitalize only the first word and proper nouns. Don't use title case.
 **Good:** `## Configure the database connection`
 **Bad:** `## Configure The Database Connection`
 
+**Multi-sentence headings.** If a heading contains more than one sentence, capitalize the first word of each sentence. Ellipses (`...`) and version literals (`v0.3.0`) do not count as sentence terminators — only a single trailing `.`, `!`, or `?` on a content word flips the case.
+
+**Good:** `## One repo. One learning agent.`
+**Bad:** `## One repo. one learning agent.`
+
+**Proper nouns.** The canonical list of preserved spellings lives in the `PROPER_NOUNS` dict in `skills/style-checker/scripts/style_autofix.py`. That dict is the authoritative source — extend it in the same PR that introduces a new proper noun into prose. Examples include `OpenClaw`, `SQLite`, `PostgreSQL`, `GitHub`, `iOS`. Tokens wrapped in backticks (inline code) are always passed through verbatim, which is the escape hatch for multi-word proper nouns like `` `Claude Code` `` until a longest-match allowlist lands.
+
 ### Rule 3.2 — Don't skip heading levels (ERROR)
 
 Heading levels must be sequential. Don't jump from `##` to `####` without a `###` in between.
