@@ -51,9 +51,11 @@ from .schema import RecallCandidate
 logger = get_logger(__name__)
 
 
-#: Reciprocal Rank Fusion constant. Mirrors the value in
-#: ``local_bm25_recall.py`` — imported indirectly rather than via star-import
-#: to keep module-boundary dependencies explicit.
+#: Reciprocal Rank Fusion constant (Cormack, Clarke & Büttcher 2009).
+#: Canonical and sole declaration — see MS-DES-0013. ``_apply_fusion`` is the
+#: only consumer; tests import it from here. When MS-DES-0011 lands remote
+#: BM25, the extra RRF terms are added in ``_apply_fusion``, not in a
+#: strategy module.
 RRF_K: int = 60
 
 

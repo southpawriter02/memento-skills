@@ -76,10 +76,11 @@ BM25_K1: float = 1.2
 #: 0.75 is the canonical default.
 BM25_B: float = 0.75
 
-#: Reciprocal Rank Fusion constant (Cormack, Clarke, Büttcher 2009).
-#: Not used by this module directly — exposed here so ``multi_recall.py``
-#: can import a single canonical value.
-RRF_K: int = 60
+#: Reciprocal Rank Fusion is a property of the fusion stage, not of this
+#: strategy, and this module never consumed it. The canonical ``RRF_K``
+#: lives in ``multi_recall.py`` — see MS-DES-0013. A duplicate literal used
+#: to sit here, documented as the canonical source but read by nothing, so
+#: retuning it had no effect on fusion.
 
 #: Field-weighting factors applied by token repetition before scoring.
 #: name >> description >> body is the intuition: a query that matches the

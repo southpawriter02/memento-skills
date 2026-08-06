@@ -186,6 +186,8 @@ recall(query, k)
 | :-------------- | :----- | :------ |
 | `RRF_K`         | `60`   | Smoothing constant in the RRF formula `1 / (RRF_K + rank)`. Cormack, Clarke & Büttcher (2009) default. Large enough that rank differences at high rank have diminishing influence; small enough that rank 1 and rank 2 are still meaningfully distinguishable. |
 
+`RRF_K` is declared once, in `core/skill/retrieval/multi_recall.py` — the module that consumes it in `_apply_fusion`. Import it from there. A second copy previously sat in `local_bm25_recall.py` documented as the canonical source but read by nothing; MS-DES-0013 removed it and added a regression guard (`tests/test_skills/retrieval/test_bm25_parity.py`) asserting the single-declaration property.
+
 ### Fusion math (two-list form)
 
 For a candidate surfaced in both the BM25 and the vector lane:
