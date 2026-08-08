@@ -25,6 +25,9 @@ def test_append_short_messages_no_compress(context_manager):
 
 def test_append_triggers_compact_when_over_budget(context_manager):
     """总 token 超阈值时触发 compact（compact_trigger = context_max * 0.7）。"""
+    # bounded prompt 模式会直接追加并跳过 LLM compact（manager.py:200），
+    # 而本用例测的正是 compact 路径，所以显式关闭。
+    context_manager._cfg.bounded_prompt_enabled = False
     context_manager.init_budget(2000)
     context_manager._total_tokens = 1500
 

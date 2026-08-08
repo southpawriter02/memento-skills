@@ -15,6 +15,9 @@ def test_build_reference_after_archive(scratchpad: Scratchpad):
 
     ref = scratchpad.build_reference()
     assert "## Scratchpad (archived context)" in ref
-    assert str(scratchpad.path) in ref
+    # scratchpad.py:337 起输出 $SCRATCHPAD 占位符，由调用方替换为真实路径，
+    # 避免把绝对路径直接写进 prompt。
+    assert "$SCRATCHPAD" in ref
+    assert str(scratchpad.path) not in ref
     assert "filesystem" in ref
     assert "search_grep" in ref

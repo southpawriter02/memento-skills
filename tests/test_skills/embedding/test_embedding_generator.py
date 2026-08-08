@@ -29,7 +29,7 @@ class TestEmbeddingGenerator:
         assert generator.is_ready is False
 
     @pytest.mark.asyncio
-    async def test_generate_for_skill(self, skill_config):
+    async def test_generate_for_skill(self, skill_config, require_embedding_service):
         """测试为 skill 生成向量"""
         generator = EmbeddingGenerator.from_config(skill_config)
 
@@ -47,7 +47,7 @@ class TestEmbeddingGenerator:
         assert all(isinstance(v, float) for v in vector)
 
     @pytest.mark.asyncio
-    async def test_generate_for_text(self, skill_config):
+    async def test_generate_for_text(self, skill_config, require_embedding_service):
         """测试为文本生成向量"""
         generator = EmbeddingGenerator.from_config(skill_config)
 

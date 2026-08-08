@@ -18,8 +18,13 @@ from middleware.config import g_config
 
 
 def _ensure_config_loaded() -> None:
-    """Load g_config if not already loaded."""
-    if g_config._config is None:
+    """Load g_config if not already loaded.
+
+    Uses the public ``is_loaded()`` predicate. The v2 three-layer
+    ConfigManager has no ``_config`` attribute — probing for it went through
+    ``__getattr__``, which raises rather than returning ``None``.
+    """
+    if not g_config.is_loaded():
         g_config.load()
 
 

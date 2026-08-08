@@ -16,12 +16,7 @@ class TestSkillConfig:
     @pytest.mark.asyncio
     async def test_config_from_global(self, test_config):
         """测试从全局配置创建 SkillConfig"""
-        # 确保 g_config 已加载
-        from middleware.config import g_config
-
-        if not g_config._config:
-            g_config._config = test_config._config
-
+        # test_config fixture 已确保 g_config 完成加载
         config = SkillConfig.from_global_config()
 
         assert config is not None

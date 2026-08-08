@@ -191,14 +191,17 @@ def test_replace_user_config_should_strip_system_only_fields():
         assert "agent" not in raw
         assert "url" not in raw.get("ota", {})
 
-        # gateway 仅允许 enabled
+        # gateway：六个绑定字段都是用户可写的，见
+        # ConfigManager._filter_user_config 里的 allowed_gateway_fields。
+        # 早期策略只放行 enabled，本断言已随实现放宽。真正的 system-only 字段
+        # （paths / logging / agent / app.name / ota.url）仍然被剔除，见上方断言。
         gw = raw.get("gateway", {})
         assert gw.get("enabled") is False
-        assert "mode" not in gw
-        assert "websocket_host" not in gw
-        assert "websocket_port" not in gw
-        assert "webhook_host" not in gw
-        assert "webhook_port" not in gw
+        assert gw.get("mode") == "bridge"
+        assert gw.get("websocket_host") == "0.0.0.0"
+        assert gw.get("websocket_port") == 9999
+        assert gw.get("webhook_host") == "0.0.0.0"
+        assert gw.get("webhook_port") == 9998
 
         # 用户字段保留
         assert raw.get("app", {}).get("theme") == "dark"

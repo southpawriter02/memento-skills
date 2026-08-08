@@ -38,7 +38,7 @@ def test_persist_long_result_folded(scratchpad: Scratchpad):
     assert msg["role"] == "tool"
     assert msg["tool_call_id"] == "call-2"
     assert "[artifact_ref:" in msg["content"]
-    assert "chars, full content archived]" in msg["content"]
+    assert "chars, full content archived" in msg["content"]  # block.py:289 起后接 "— use read_file(...)"
 
     # artifact file should exist with full original content
     artifacts = list(scratchpad.artifacts_dir.iterdir())

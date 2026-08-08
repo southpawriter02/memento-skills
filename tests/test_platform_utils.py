@@ -20,29 +20,29 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-import importlib.util
-
-_spec = importlib.util.spec_from_file_location(
-    "platform_utils",
-    project_root / "core" / "skill" / "execution" / "platform_utils.py",
+# The v0.2.0 architecture upgrade moved these helpers out of
+# ``core/skill/execution/platform_utils.py`` (deleted) into
+# ``middleware/utils/``. Import them normally rather than loading a file by
+# path — the old spec_from_file_location call raised FileNotFoundError at
+# collection time, taking the whole module down.
+from middleware.utils.platform import (  # noqa: E402
+    SCRIPT_EXTENSIONS,
+    background_hint,
+    chmod_executable,
+    has_bash,
+    has_powershell,
+    is_path_within,
+    pip_shim_content,
+    pip_shim_path,
+    python_executable,
+    temp_dir,
+    uv_install_hint,
+    venv_bin_dir,
+    venv_python,
 )
-_mod = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_mod)
-
-SCRIPT_EXTENSIONS = _mod.SCRIPT_EXTENSIONS
-background_hint = _mod.background_hint
-chmod_executable = _mod.chmod_executable
-filter_env_by_whitelist = _mod.filter_env_by_whitelist
-has_bash = _mod.has_bash
-has_powershell = _mod.has_powershell
-is_path_within = _mod.is_path_within
-pip_shim_content = _mod.pip_shim_content
-pip_shim_path = _mod.pip_shim_path
-python_executable = _mod.python_executable
-temp_dir = _mod.temp_dir
-uv_install_hint = _mod.uv_install_hint
-venv_bin_dir = _mod.venv_bin_dir
-venv_python = _mod.venv_python
+from middleware.utils.environment.whitelist import (  # noqa: E402
+    filter_env_by_whitelist,
+)
 
 
 # ================================================================

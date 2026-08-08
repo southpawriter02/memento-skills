@@ -25,7 +25,7 @@ class TestEmbeddingGeneratorReal:
         assert generator.dimension is None or isinstance(generator.dimension, int)
 
     @pytest.mark.asyncio
-    async def test_generate(self, generator):
+    async def test_generate(self, generator, require_embedding_service):
         """测试单文本生成"""
         result = await generator.generate("这是一个测试文本")
 
@@ -38,7 +38,7 @@ class TestEmbeddingGeneratorReal:
         assert generator.dimension == len(result)
 
     @pytest.mark.asyncio
-    async def test_generate_consistency(self, generator):
+    async def test_generate_consistency(self, generator, require_embedding_service):
         """测试多次生成维度一致"""
         text1 = "测试文本1"
         text2 = "测试文本2"
@@ -51,7 +51,7 @@ class TestEmbeddingGeneratorReal:
         assert generator.dimension == len(result1)
 
     @pytest.mark.asyncio
-    async def test_generate_chinese(self, generator):
+    async def test_generate_chinese(self, generator, require_embedding_service):
         """测试中文文本"""
         result = await generator.generate("这是一个中文测试句子")
 
@@ -60,7 +60,7 @@ class TestEmbeddingGeneratorReal:
         assert len(result) > 0
 
     @pytest.mark.asyncio
-    async def test_generate_english(self, generator):
+    async def test_generate_english(self, generator, require_embedding_service):
         """测试英文文本"""
         result = await generator.generate("This is an English test sentence")
 
@@ -69,7 +69,7 @@ class TestEmbeddingGeneratorReal:
         assert len(result) > 0
 
     @pytest.mark.asyncio
-    async def test_generate_for_skill(self, generator):
+    async def test_generate_for_skill(self, generator, require_embedding_service):
         """测试为 skill 生成 embedding"""
         skill = Skill(
             name="test_skill",
@@ -93,7 +93,7 @@ class TestEmbeddingGeneratorReal:
             assert isinstance(result, list)
 
     @pytest.mark.asyncio
-    async def test_from_config(self, test_config):
+    async def test_from_config(self, test_config, require_embedding_service):
         """测试 from_config 工厂方法"""
         from core.skill.config import SkillConfig
 
@@ -152,7 +152,7 @@ class TestEmbeddingGeneratorStress:
     """压力测试"""
 
     @pytest.mark.asyncio
-    async def test_generate_long_text(self, generator):
+    async def test_generate_long_text(self, generator, require_embedding_service):
         """测试长文本"""
         long_text = "这是一个测试。" * 100
 
@@ -163,7 +163,7 @@ class TestEmbeddingGeneratorStress:
         assert len(result) > 0
 
     @pytest.mark.asyncio
-    async def test_generate_special_chars(self, generator):
+    async def test_generate_special_chars(self, generator, require_embedding_service):
         """测试特殊字符"""
         special_text = "Test with special chars: !@#$%^&*() 中文 🎉"
 

@@ -22,10 +22,11 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from middleware.storage import (
+    SkillSourceType,
     Base,
-    MessageCreate,
-    MessageRead,
-    MessageService,
+    ConversationCreate,
+    ConversationRead,
+    ConversationService,
     SessionCreate,
     SessionRead,
     SessionService,
@@ -52,6 +53,7 @@ async def test_consistency():
     from middleware.config.config_manager import ConfigManager
 
     manager = ConfigManager()
+    manager.load()  # v2 需要显式 load()，构造函数不再自动加载
     db_path = manager.get_db_path()
     db_url = f"sqlite+aiosqlite:///{db_path}"
 
@@ -66,9 +68,9 @@ async def test_consistency():
     print("✓ 数据库表创建成功")
 
     # 创建服务实例
-    session_service = SessionService()
-    message_service = MessageService()
-    skill_service = SkillService()
+    session_service = SessionService(db_manager)
+    message_service = ConversationService(db_manager)
+    skill_service = SkillService(db_manager)
 
     print("\n【1. 测试 Session 完整流程】")
 
@@ -115,36 +117,36 @@ async def test_consistency():
     assert all(isinstance(s, SessionRead) for s in sessions)
     print(f"  ✓ List: -> list[SessionRead] (count={len(sessions)})")
 
-    print("\n【2. 测试 Message 完整流程】")
+    print("\n【2. 测试 Conversation 完整流程】")
 
     # Create
-    msg_create = MessageCreate(
+    msg_create = ConversationCreate(
         session_id=session.id,
         role="user",
+        title="Greeting",
         content="Hello",
-        message_type="text",
         meta_info={"tokens": 10},
     )
     message = await message_service.create(msg_create)
-    assert isinstance(message, MessageRead)
+    assert isinstance(message, ConversationRead)
     assert message.session_id == session.id
     assert message.role == "user"
     assert message.content == "Hello"
     assert message.sequence == 1  # 自动生成的序号
     assert message.id is not None
-    print(f"  ✓ Create: MessageCreate -> MessageRead (sequence={message.sequence})")
+    print(f"  ✓ Create: ConversationCreate -> ConversationRead (sequence={message.sequence})")
 
     # Read
     msg_fetched = await message_service.get(message.id)
     assert msg_fetched is not None
     assert msg_fetched.id == message.id
-    print("  ✓ Read: id -> MessageRead")
+    print("  ✓ Read: id -> ConversationRead")
 
     # List by session
     messages = await message_service.list_by_session(session.id)
     assert len(messages) > 0
-    assert all(isinstance(m, MessageRead) for m in messages)
-    print(f"  ✓ List: session_id -> list[MessageRead] (count={len(messages)})")
+    assert all(isinstance(m, ConversationRead) for m in messages)
+    print(f"  ✓ List: session_id -> list[ConversationRead] (count={len(messages)})")
 
     print("\n【3. 测试 Skill 完整流程】")
 
@@ -201,13 +203,27 @@ async def test_consistency():
     assert all(isinstance(s, SkillRead) for s in skills)
     print(f"  ✓ List: -> list[SkillRead] (count={len(skills)})")
 
-    # Update embedding
+    # Embedding round-trip.
+    # SkillService.update_embedding() no longer exists: embeddings are written
+    # at create time via SkillCreate.embedding and read back through
+    # get_with_embedding(). Post-hoc embedding writes are the VectorStorage
+    # layer's job now, not this service's.
     import numpy as np
 
     embedding = np.random.randn(384).astype(np.float32).tobytes()
-    success = await skill_service.update_embedding(skill.id, embedding)
-    assert success is True
-    print("  ✓ Update embedding: skill_id, bytes -> bool")
+    embedded = await skill_service.create(
+        SkillCreate(
+            name="schema_consistency_embedded",
+            display_name="Embedded skill",
+            description="Skill carrying an embedding",
+            source_type=SkillSourceType.LOCAL.value,
+            embedding=embedding,
+        )
+    )
+    fetched = await skill_service.get_with_embedding(embedded.name)
+    assert fetched is not None
+    assert fetched.embedding == embedding
+    print("  ✓ Embedding: SkillCreate(embedding=...) -> get_with_embedding()")
 
     print("\n【4. 验证 Schema 设计决策】")
 
@@ -227,7 +243,7 @@ async def test_consistency():
     print("\n【验证总结】")
     print("1. Model 和 Schema 字段对应正确")
     print("   - Session: 10 个字段，Schema 覆盖完整")
-    print("   - Message: 11 个字段，Schema 覆盖完整")
+    print("   - Conversation: 13 个字段，Schema 覆盖完整")
     print("   - Skill: 17 个字段，Schema 覆盖完整")
     print("")
     print("2. Service API 设计合理")

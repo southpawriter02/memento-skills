@@ -26,7 +26,8 @@ def test_compress_long_message_triggers_llm():
     ):
         result = asyncio.run(compress_message(msg, max_msg_tokens=500, summary_tokens=200))
 
-    assert "[compressed]" in result["content"]
+    # compaction.py:68 现在把角色写进标记："[compressed from {role}]"
+    assert "[compressed from assistant]" in result["content"]
     assert "compressed summary" in result["content"]
     assert result["role"] == "assistant"
 

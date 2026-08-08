@@ -141,7 +141,7 @@ def test_persist_tool_result_long_folded():
         assert msg["tool_call_id"] == "call-1"
         # content should be a ref, not the raw JSON
         assert "[artifact_ref:" in msg["content"]
-        assert "chars, full content archived]" in msg["content"]
+        assert "chars, full content archived" in msg["content"]  # block.py:289 起后接 "— use read_file(...)"
 
         # artifact file should exist with full content
         artifact_dir = sp.artifacts_dir

@@ -24,9 +24,8 @@ from middleware.storage.models import (
     Base,
     Session,
     SessionStatus,
-    Message,
-    MessageRole,
-    MessageType,
+    Conversation,
+    ConversationRole,
     Skill,
     SkillStatus,
     SkillSourceType,
@@ -47,13 +46,14 @@ async def test_models():
     from middleware.config.config_manager import ConfigManager
 
     manager = ConfigManager()
+    manager.load()  # v2 需要显式 load()，构造函数不再自动加载
     db_path = manager.get_db_path()
     db_url = f"sqlite+aiosqlite:///{db_path}"
 
     print(f"\n数据库路径: {db_path}")
 
     db_manager = get_db_manager()
-    db_manager.init(db_url=db_url, echo=False)
+    await db_manager.init(db_url=db_url, echo=False)
 
     # 创建表
     async with db_manager.engine.begin() as conn:
@@ -63,7 +63,10 @@ async def test_models():
     # 测试数据
     async with db_manager.session_factory() as session:
         print("\n【1. 创建会话】")
+        _now = datetime.now()
         chat_session = Session(
+            created_at=_now,
+            updated_at=_now,
             title="测试会话",
             description="这是一个测试会话",
             status=SessionStatus.ACTIVE.value,
@@ -82,32 +85,38 @@ async def test_models():
         print(f"    元数据: {chat_session.meta_info}")
 
         print("\n【2. 创建消息】")
-        msg1 = Message(
+        msg1 = Conversation(
+            created_at=_now,
+            updated_at=_now,
             session_id=chat_session.id,
             sequence=1,
-            role=MessageRole.USER.value,
-            message_type=MessageType.TEXT.value,
+            role=ConversationRole.USER.value,
+            title="自我介绍请求",
             content="你好，请介绍一下自己",
             meta_info={"tokens": 15, "model": "gpt-4"},
         )
-        msg2 = Message(
+        msg2 = Conversation(
+            created_at=_now,
+            updated_at=_now,
             session_id=chat_session.id,
             sequence=2,
-            role=MessageRole.ASSISTANT.value,
-            message_type=MessageType.TEXT.value,
+            role=ConversationRole.ASSISTANT.value,
+            title="自我介绍回复",
             content="你好！我是一个AI助手...",
             meta_info={"tokens": 50, "model": "gpt-4"},
         )
         session.add_all([msg1, msg2])
 
         # 更新会话统计
-        chat_session.message_count = 2
+        chat_session.conversation_count = 2
         chat_session.total_tokens = 65
         await session.commit()
         print(f"  ✓ 创建了 2 条消息")
 
         print("\n【3. 创建技能】")
         test_skill = Skill(
+            created_at=_now,
+            updated_at=_now,
             name="weather_check",
             display_name="天气查询",
             description="查询指定城市的天气信息",
@@ -133,7 +142,7 @@ async def test_models():
         # 查询会话及其消息
         result = await session.get(Session, chat_session.id)
         print(f"  ✓ 查询会话: {result.title}")
-        print(f"    消息数: {result.message_count}")
+        print(f"    消息数: {result.conversation_count}")
         print(f"    总token: {result.total_tokens}")
 
         # 查询技能
@@ -148,10 +157,10 @@ async def test_models():
     print("1. Session - 会话表")
     print("   - 基础信息: id, title, description, status")
     print("   - 元数据: meta_info (JSON)")
-    print("   - 统计: message_count, total_tokens")
+    print("   - 统计: conversation_count, total_tokens")
     print("   - 关联: messages (一对多)")
     print("")
-    print("2. Message - 消息表")
+    print("2. Conversation - 对话表")
     print("   - 基础: id, session_id, sequence, role, content")
     print("   - 类型: message_type (text/tool_call/system/error)")
     print("   - 工具: tool_calls, tool_call_id")

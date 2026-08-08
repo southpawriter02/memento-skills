@@ -18,6 +18,18 @@
 
 from __future__ import annotations
 
+import pytest
+
+pytest.skip(
+    "Imports `builtin.tools.registry.configure`, which does not exist on this "
+    "branch and never has (no `def configure` appears anywhere in builtin/ in "
+    "the git history). Builtin tools are now registered declaratively via "
+    "BUILTIN_TOOL_REGISTRY and reached through `core.shared.tools_facade`. "
+    "Needs a rewrite against that surface.",
+    allow_module_level=True,
+)
+
+
 import asyncio
 import sys
 import tempfile

@@ -28,6 +28,7 @@ async def test_refactored_architecture():
     from middleware.config.config_manager import ConfigManager
 
     manager = ConfigManager()
+    manager.load()  # v2 需要显式 load()，构造函数不再自动加载
     db_path = manager.get_db_path()
     db_url = f"sqlite+aiosqlite:///{db_path}"
 

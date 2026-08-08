@@ -10,26 +10,22 @@ import pytest
 import pytest_asyncio
 from pathlib import Path
 
-from middleware.config import ConfigManager
+from middleware.config import g_config
 from core.skill.config import SkillConfig
 
 
 @pytest.fixture(scope="session")
 def test_config():
     """加载测试配置"""
-    config_manager = ConfigManager()
-    config_manager.load()
-    return config_manager
+    if not g_config.is_loaded():
+        g_config.load()
+    return g_config
 
 
 @pytest.fixture(scope="session")
 def skill_config(test_config):
     """SkillConfig 实例"""
-    from middleware.config import g_config
-
-    # 确保 g_config 已加载
-    if not g_config._config:
-        g_config._config = test_config._config
+    # test_config fixture 已确保 g_config 完成加载
     return SkillConfig.from_global_config()
 
 
@@ -67,10 +63,6 @@ async def skill_service(test_config):
         from middleware.storage.core.engine import get_db_manager
         from middleware.config import g_config
 
-        # 确保 g_config 已加载
-        if not g_config._config:
-            g_config._config = test_config._config
-
         # 获取数据库路径
         db_path = g_config.get_db_path()
         if not db_path:
@@ -92,7 +84,7 @@ async def skill_service(test_config):
             await conn.run_sync(Base.metadata.create_all)
 
         # 创建服务实例
-        service = SkillService()
+        service = SkillService(db_manager)
         yield service
 
         # 清理
@@ -185,7 +177,14 @@ async def skill_store(skills_dir, db_dir, skill_service, embedding_client):
     )
     await vector_storage.init()
 
-    store = SkillStore(file_storage, db_storage, vector_storage)
+    from core.skill.embedding import EmbeddingGenerator
+
+    store = SkillStore(
+        file_storage,
+        db_storage,
+        vector_storage,
+        EmbeddingGenerator.from_config(skill_config),
+    )
 
     yield store
 

@@ -11,16 +11,14 @@ from pathlib import Path
 
 from core.skill.config import SkillConfig
 from core.skill.market import SkillMarket
-from middleware.config import ConfigManager, g_config
+from middleware.config import g_config
 
 
 @pytest.fixture(scope="session")
 def test_config():
     """加载测试配置"""
-    if not g_config._config:
-        config_manager = ConfigManager()
-        config_manager.load()
-        g_config._config = config_manager._config
+    if not g_config.is_loaded():
+        g_config.load()
     return SkillConfig.from_global_config()
 
 
@@ -34,7 +32,7 @@ async def skill_market(test_config):
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_uninstall_skill(skill_market, test_config):
+async def test_uninstall_skill(skill_market, test_config, require_embedding_service):
     """
     测试卸载 skill
 

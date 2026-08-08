@@ -45,6 +45,7 @@ async def test_gui_integration():
     from middleware.config.config_manager import ConfigManager
 
     manager = ConfigManager()
+    manager.load()  # v2 需要显式 load()，构造函数不再自动加载
     db_path = manager.get_db_path()
     db_url = f"sqlite+aiosqlite:///{db_path}"
 
@@ -54,8 +55,8 @@ async def test_gui_integration():
         await conn.run_sync(Base.metadata.create_all)
 
     # 初始化服务（模拟 GUI 中的 service）
-    session_service = SessionService()
-    conversation_service = ConversationService()
+    session_service = SessionService(db_manager)
+    conversation_service = ConversationService(db_manager)
 
     # ========== 场景 1: 应用启动 ==========
     print("\n【场景 1】应用启动")

@@ -2,7 +2,7 @@
 """
 Storage Service 性能测试
 
-测试 SessionService 和 MessageService 的性能表现
+测试 SessionService 和 ConversationService 的性能表现
 
 使用方法:
     .venv/bin/python tests/test_storage_performance.py
@@ -22,14 +22,37 @@ sys.path.insert(0, str(project_root))
 
 from middleware.storage import (
     Base,
-    MessageService,
+    ConversationService,
     SessionService,
     SessionCreate,
-    MessageCreate,
+    ConversationCreate,
     SessionUpdate,
 )
+import pytest_asyncio
+
 from middleware.storage.core.engine import get_db_manager
 from utils.logger import setup_logger
+
+
+@pytest_asyncio.fixture(scope="module", loop_scope="module", autouse=True)
+async def _perf_db():
+    """初始化数据库供本模块的性能测试使用。
+
+    这些测试原本只通过文件末尾的 ``main()`` 以脚本方式运行，DB 初始化也写在
+    ``main()`` 里。用 pytest 单独收集时那段代码不会执行，于是服务层拿不到已初始化
+    的 db_manager。这里把同样的初始化提升为 module 级 autouse fixture。
+    """
+    from middleware.config.config_manager import ConfigManager
+
+    manager = ConfigManager()
+    manager.load()
+    db_url = f"sqlite+aiosqlite:///{manager.get_db_path()}"
+
+    db_manager = get_db_manager()
+    await db_manager.init(db_url=db_url, echo=False)
+    async with db_manager.engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield db_manager
 
 
 class PerformanceMetrics:
@@ -82,7 +105,7 @@ async def test_session_service_performance():
     print("SessionService 性能测试")
     print("=" * 70)
 
-    session_service = SessionService()
+    session_service = SessionService(get_db_manager())
 
     # 测试 1: 创建会话性能
     create_metrics = PerformanceMetrics("创建会话 (create)")
@@ -177,13 +200,13 @@ async def test_session_service_performance():
 
 
 async def test_message_service_performance():
-    """测试 MessageService 性能"""
+    """测试 ConversationService 性能"""
     print("\n" + "=" * 70)
-    print("MessageService 性能测试")
+    print("ConversationService 性能测试")
     print("=" * 70)
 
-    session_service = SessionService()
-    message_service = MessageService()
+    session_service = SessionService(get_db_manager())
+    message_service = ConversationService(get_db_manager())
 
     # 创建测试会话
     print("\n创建测试会话...")
@@ -201,9 +224,10 @@ async def test_message_service_performance():
     for i in range(test_count):
         start = time.perf_counter()
         msg = await message_service.create(
-            MessageCreate(
+            ConversationCreate(
                 session_id=session_id,
                 role="user" if i % 2 == 0 else "assistant",
+                title=f"性能测试消息 {i}",
                 content=f"这是测试消息内容 {i}" * 10,  # 较长内容
                 meta_info={"tokens": 50},
             )
@@ -246,9 +270,10 @@ async def test_message_service_performance():
     for i in range(20):
         start = time.perf_counter()
         msg = await message_service.create(
-            MessageCreate(
+            ConversationCreate(
                 session_id=session_id,
                 role="user",
+                title="大内容性能测试",
                 content=large_content,
                 meta_info={"tokens": 3000},
             )
@@ -265,9 +290,10 @@ async def test_message_service_performance():
 
     for i in range(200):
         msg = await message_service.create(
-            MessageCreate(
+            ConversationCreate(
                 session_id=session_id,
                 role="assistant",
+                title=f"批量消息 {i}",
                 content=f"批量消息 {i}",
             )
         )
@@ -318,8 +344,8 @@ async def test_concurrent_performance():
     print("并发性能测试")
     print("=" * 70)
 
-    session_service = SessionService()
-    message_service = MessageService()
+    session_service = SessionService(get_db_manager())
+    message_service = ConversationService(get_db_manager())
 
     # 创建测试会话
     session = await session_service.create(SessionCreate(title="并发测试会话"))
@@ -333,9 +359,10 @@ async def test_concurrent_performance():
         ids = []
         for i in range(20):
             msg = await message_service.create(
-                MessageCreate(
+                ConversationCreate(
                     session_id=session_id,
                     role="user",
+                    title=f"并发测试消息 batch={batch_id} msg={i}",
                     content=f"并发测试消息 batch={batch_id} msg={i}",
                 )
             )
@@ -421,7 +448,7 @@ async def main():
         # Session 服务测试
         results["session"] = await test_session_service_performance()
 
-        # Message 服务测试
+        # Conversation 服务测试
         results["message"] = await test_message_service_performance()
 
         # 并发测试
@@ -473,9 +500,9 @@ def print_summary_report(results: dict):
                 f"  批量创建: {s['avg_time'] * 1000:.2f}ms/次 ({s['ops_per_sec']:.1f} ops/sec)"
             )
 
-    # Message Service 汇总
+    # Conversation Service 汇总
     if "message" in results:
-        print("\n【MessageService】")
+        print("\n【ConversationService】")
         msg = results["message"]
 
         if "create" in msg:

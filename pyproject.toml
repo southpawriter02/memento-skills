@@ -144,3 +144,16 @@ include = [
     "README.md",
     "howto.md",
 ]
+
+[tool.pytest.ini_options]
+# asyncio_mode = "auto" so bare ``async def test_*`` functions are collected
+# without needing an explicit @pytest.mark.asyncio on every one. The suite was
+# written assuming this: 24 async tests across 9 files carry no marker and were
+# silently failing with "async def functions are not natively supported" once a
+# runnable environment existed. Files that DO carry explicit markers keep
+# working unchanged — auto mode only supplies a missing one.
+asyncio_mode = "auto"
+# Pin the fixture loop scope explicitly; pytest-asyncio 1.x warns when it is
+# left unset and defaults may change between releases.
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]

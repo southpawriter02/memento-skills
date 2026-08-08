@@ -18,11 +18,11 @@ sys.path.insert(0, str(project_root))
 
 from middleware.storage import (
     Base,
-    MessageService,
+    ConversationService,
     SessionService,
     SkillService,
     SessionCreate,
-    MessageCreate,
+    ConversationCreate,
     SkillCreate,
     SessionUpdate,
 )
@@ -43,6 +43,7 @@ async def test_services():
     from middleware.config.config_manager import ConfigManager
 
     manager = ConfigManager()
+    manager.load()  # v2 需要显式 load()，构造函数不再自动加载
     db_path = manager.get_db_path()
     db_url = f"sqlite+aiosqlite:///{db_path}"
 
@@ -57,9 +58,9 @@ async def test_services():
     print("✓ 数据库表创建成功")
 
     # 创建服务实例（无需传递 db session）
-    session_service = SessionService()
-    message_service = MessageService()
-    skill_service = SkillService()
+    session_service = SessionService(db_manager)
+    message_service = ConversationService(db_manager)
+    skill_service = SkillService(db_manager)
 
     print("\n【1. 测试 SessionService（自动管理 session）】")
 
@@ -84,13 +85,14 @@ async def test_services():
     recent_sessions = await session_service.list_recent(limit=5)
     print(f"  ✓ 最近会话列表: {len(recent_sessions)} 个")
 
-    print("\n【2. 测试 MessageService（自动管理 session）】")
+    print("\n【2. 测试 ConversationService（自动管理 session）】")
 
     # 创建消息 - 无需传递 db 参数
     msg1 = await message_service.create(
-        MessageCreate(
+        ConversationCreate(
             session_id=chat_session.id,
             role="user",
+            title="自我介绍请求",
             content="你好，请介绍一下自己",
             meta_info={"tokens": 15},
         )
@@ -98,9 +100,10 @@ async def test_services():
     print(f"  ✓ 消息1创建: sequence={msg1.sequence}")
 
     msg2 = await message_service.create(
-        MessageCreate(
+        ConversationCreate(
             session_id=chat_session.id,
             role="assistant",
+            title="自我介绍回复",
             content="你好！我是一个AI助手...",
             meta_info={"tokens": 50},
         )
@@ -113,14 +116,14 @@ async def test_services():
 
     # 验证会话统计已更新
     updated_session = await session_service.get(chat_session.id)
-    print(f"    会话消息数: {updated_session.message_count}")
+    print(f"    会话消息数: {updated_session.conversation_count}")
     print(f"    会话token数: {updated_session.total_tokens}")
 
     print("\n【3. 测试 SkillService（自动管理 session）】")
 
     # 创建技能
     skill_data = SkillCreate(
-        name="weather_check",
+        name="weather_check_service",
         display_name="天气查询",
         description="查询指定城市的天气信息",
         version="1.0.0",
@@ -136,7 +139,7 @@ async def test_services():
     print(f"    标签: {skill.tags}")
 
     # 通过名称获取技能
-    by_name = await skill_service.get_by_name("weather_check")
+    by_name = await skill_service.get_by_name("weather_check_service")
     print(f"  ✓ 通过名称获取: {by_name.display_name if by_name else 'None'}")
 
     # 列出所有活跃技能

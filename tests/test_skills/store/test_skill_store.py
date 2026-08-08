@@ -39,7 +39,7 @@ class TestSkillStore:
 
     @pytest.mark.asyncio
     async def test_init_with_components(
-        self, skills_dir, skill_service, vector_storage
+        self, skills_dir, skill_service, vector_storage, skill_config
     ):
         """测试用组件初始化 - 使用 g_config 路径"""
         file_storage = FileStorage(skills_dir)
@@ -48,7 +48,14 @@ class TestSkillStore:
         db_storage = DBStorage(skill_service)
         await db_storage.init()
 
-        store = SkillStore(file_storage, db_storage, vector_storage)
+        from core.skill.embedding import EmbeddingGenerator
+
+        store = SkillStore(
+            file_storage,
+            db_storage,
+            vector_storage,
+            EmbeddingGenerator.from_config(skill_config),
+        )
 
         assert store.file_storage is file_storage
         assert store.db_storage is db_storage

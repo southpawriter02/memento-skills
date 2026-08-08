@@ -64,6 +64,7 @@ def get_alembic_config(db_url: str | None = None) -> Config:
 
     if db_url is None:
         manager = ConfigManager()
+        manager.load()  # v2 需要显式 load()
         db_url = manager.get_db_url()
 
     alembic_cfg = Config(str(alembic_ini))
@@ -191,6 +192,7 @@ def test_migration_workflow() -> None:
     setup_logger()
 
     manager = ConfigManager()
+    manager.load()  # v2 需要显式 load()
     db_url = manager.get_db_url()
 
     print(f"\n数据库 URL: {db_url}")

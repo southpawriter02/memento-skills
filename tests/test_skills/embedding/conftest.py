@@ -7,19 +7,16 @@ from __future__ import annotations
 
 import pytest
 
-from middleware.config import ConfigManager, g_config
+from middleware.config import g_config
 from middleware.llm.embedding_client import EmbeddingClient
 
 
 @pytest.fixture(scope="session")
 def test_config():
     """加载测试配置并确保 g_config 已加载"""
-    config_manager = ConfigManager()
-    config_manager.load()
-    # 确保 g_config 也被加载
-    if not g_config._config:
-        g_config._config = config_manager._config
-    return config_manager
+    if not g_config.is_loaded():
+        g_config.load()
+    return g_config
 
 
 @pytest.fixture

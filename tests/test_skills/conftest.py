@@ -10,19 +10,21 @@ import pytest
 import pytest_asyncio
 from pathlib import Path
 
-from middleware.config import ConfigManager, g_config
+from middleware.config import g_config
 from core.skill.config import SkillConfig
 
 
 @pytest.fixture(scope="session")
 def test_config():
-    """加载测试配置（全局单例）"""
-    config_manager = ConfigManager()
-    config_manager.load()
-    # 确保 g_config 已加载
-    if not g_config._config:
-        g_config._config = config_manager._config
-    return config_manager
+    """加载测试配置（全局单例）。
+
+    直接加载 g_config 本身，而不是新建一个 ConfigManager 再把内部状态复制过去。
+    v2 三层架构（system / user / runtime）没有 ``_config`` 属性，旧写法探测
+    ``g_config._config`` 会走到 ``__getattr__`` 并直接抛 RuntimeError。
+    """
+    if not g_config.is_loaded():
+        g_config.load()
+    return g_config
 
 
 @pytest.fixture(scope="session")
@@ -99,3 +101,73 @@ async def db_manager(test_config):
     yield db_manager
 
     await db_manager.dispose()
+
+
+# ---------------------------------------------------------------------------
+# External-service guards
+#
+# Several suites under tests/test_skills/ are integration tests against live
+# services (the Skill Market's embedding endpoint, and whatever LLM provider
+# the user has configured). When those are unconfigured or down, the correct
+# outcome is a skip that names the real reason — not a failure that looks like
+# a regression in this repo.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def embedding_service_status(test_config) -> str | None:
+    """``None`` when the embedding service works, else a human-readable reason.
+
+    Probes the real endpoint once per session. A configured-but-broken service
+    is the case the old code missed: the fixtures only checked that
+    ``embedding_base_url`` was non-empty, so a live-but-erroring Market
+    produced ``None`` vectors and a bare ``assert vector is not None``.
+    """
+    import asyncio
+
+    cfg = test_config.skills.retrieval
+    if not cfg.embedding_base_url:
+        return "embedding_base_url not configured"
+
+    try:
+        from middleware.llm.embedding_client import EmbeddingClient
+
+        client = EmbeddingClient.from_config()
+        vectors = asyncio.run(client.embed(["connectivity probe"]))
+    except Exception as exc:  # noqa: BLE001 — any failure means "unusable"
+        detail = str(exc).replace("\n", " ")[:300]
+        return f"embedding service unusable ({type(exc).__name__}): {detail}"
+
+    if not vectors or not vectors[0]:
+        return "embedding service returned no vectors"
+    return None
+
+
+@pytest.fixture
+def require_embedding_service(embedding_service_status):
+    """Skip a test when the embedding service is unconfigured or broken."""
+    if embedding_service_status:
+        pytest.skip(embedding_service_status)
+
+
+@pytest.fixture(scope="session")
+def llm_profile_status(test_config) -> str | None:
+    """``None`` when an active LLM profile exists, else the reason it doesn't."""
+    try:
+        llm_config = test_config.llm
+        if llm_config.current_profile is None:
+            return (
+                "no active LLM profile configured "
+                f"(active_profile={llm_config.active_profile!r}, "
+                f"available={list(llm_config.profiles.keys())})"
+            )
+    except Exception as exc:  # noqa: BLE001
+        return f"LLM config unreadable ({type(exc).__name__}): {exc}"
+    return None
+
+
+@pytest.fixture
+def require_llm_profile(llm_profile_status):
+    """Skip a test when no usable LLM profile is configured."""
+    if llm_profile_status:
+        pytest.skip(llm_profile_status)

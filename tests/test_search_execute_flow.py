@@ -11,6 +11,19 @@
 
 from __future__ import annotations
 
+import pytest
+
+pytest.skip(
+    "Tests the `core.skill.provider` abstraction (SkillProvider / SkillInfo / "
+    "SkillExecuteResult), deleted in the v0.2.0 architecture upgrade (f05f9bc). "
+    "The replacement is `core.skill.gateway.SkillGateway`, which exposes "
+    "search()/execute()/discover()/install(). Porting this flow test to the "
+    "gateway API is real work, not a rename - tracked rather than deleted so "
+    "the coverage gap stays visible.",
+    allow_module_level=True,
+)
+
+
 import asyncio
 import shutil
 import sys

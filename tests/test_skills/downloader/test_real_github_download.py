@@ -13,13 +13,11 @@ from core.skill.downloader.factory import create_default_download_manager
 @pytest.mark.integration
 def test_download_real_skill_from_github():
     """Real GitHub download for a published skill."""
-    from middleware.config import ConfigManager, g_config
+    from middleware.config import g_config
 
     # 确保全局配置已加载
-    if not g_config._config:
-        config_manager = ConfigManager()
-        config_manager.load()
-        g_config._config = config_manager._config
+    if not g_config.is_loaded():
+        g_config.load()
 
     url = "https://github.com/ruvnet/ruflo/tree/main/.agents/skills/agentdb-learning"
     config = SkillConfig.from_global_config()
